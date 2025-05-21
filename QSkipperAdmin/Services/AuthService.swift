@@ -1,0 +1,756 @@
+import Foundation
+import Combine
+import SwiftUI
+import Security
+
+class AuthService: ObservableObject {
+    // Shared instance
+    static let shared = AuthService()
+    
+    // Published properties
+    @Published var currentUser: UserRestaurantProfile?
+    @Published var isAuthenticated: Bool = false
+    @Published var isLoading: Bool = false
+    @Published var error: String? = nil
+    
+    // API endpoints
+    private struct Endpoints {
+        static let baseURL = NetworkManager.baseURL
+        static let login = "\(baseURL)/resturant-login"
+        static let register = "\(baseURL)/resturant-register"
+        static let profile = "\(baseURL)/auth/profile"
+    }
+    
+    // Constants
+    private enum StorageKeys {
+        static let authToken = "qskipper_auth_token"
+        static let userId = "qskipper_user_id"
+    }
+    
+    // Private properties
+    private var cancellables = Set<AnyCancellable>()
+    
+    init() {
+        // Check for existing ID on launch
+        if let userId = getUserId() {
+            // Set authenticated immediately based on user ID
+            self.isAuthenticated = true
+            DebugLogger.shared.log("User ID found (\(userId)), setting authenticated state to true", category: .auth)
+            
+            // Check if we also have a token
+            if let token = getToken() {
+                DebugLogger.shared.log("Auth token also found for user \(userId)", category: .auth)
+                
+                // Create minimal profile
+                self.currentUser = UserRestaurantProfile(
+                    id: userId,
+                    restaurantId: userId,
+                    restaurantName: "",
+                    estimatedTime: 30,
+                    cuisine: "",
+                    restaurantImage: nil
+                )
+            }
+        } else {
+            // No ID found, ensure user is logged out
+            self.isAuthenticated = false
+            DebugLogger.shared.log("No user ID found, user is not authenticated", category: .auth)
+            
+            // Clear any leftover tokens to be safe
+            UserDefaults.standard.removeObject(forKey: StorageKeys.authToken)
+            NetworkManager.shared.clearAuthToken()
+        }
+        
+        DebugLogger.shared.log("AuthService initialized", category: .auth)
+    }
+    
+    // MARK: - Public Methods
+    
+    /// Login user
+    /// - Parameters:
+    ///   - email: User email
+    ///   - password: User password
+    func login(email: String, password: String) {
+        isLoading = true
+        error = nil
+        
+        guard let url = URL(string: Endpoints.login) else {
+            error = "Invalid URL"
+            return
+        }
+        
+        // Create request
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Create body
+        let body: [String: Any] = [
+            "email": email,
+            "password": password
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            self.error = "Failed to encode login data: \(error.localizedDescription)"
+            isLoading = false
+            return
+        }
+        
+        // Log the request
+        DebugLogger.shared.log("Restaurant login request: \(Endpoints.login)", category: .auth)
+        
+        // Send request
+        URLSession.shared.dataTaskPublisher(for: request)
+            .map(\.data)
+            .tryMap { data -> (id: String?, token: String?, restaurantInfo: [String: Any]?) in
+                // Log raw response
+                if let responseString = String(data: data, encoding: .utf8) {
+                    DebugLogger.shared.log("Restaurant login response: \(responseString)", category: .auth)
+                }
+                
+                // Try to parse as JSON
+                let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+                
+                // Extract id and token
+                let id = json?["id"] as? String
+                let token = json?["token"] as? String
+                
+                // Create a copy of the JSON as restaurant info
+                var restaurantInfo: [String: Any]? = nil
+                if let json = json {
+                    restaurantInfo = json
+                }
+                
+                return (id: id, token: token, restaurantInfo: restaurantInfo)
+            }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] completion in
+                self?.isLoading = false
+                if case .failure(let err) = completion {
+                    self?.error = "Login failed: \(err.localizedDescription)"
+                    DebugLogger.shared.log("Error logging in: \(err)", category: .auth)
+                }
+            } receiveValue: { [weak self] result in
+                guard let self = self else { return }
+                
+                // Save ID and token
+                if let id = result.id {
+                    self.saveUserId(userId: id)
+                    DebugLogger.shared.log("User ID saved: \(id)", category: .auth)
+                    
+                    // Set authenticated flag
+                    self.isAuthenticated = true
+                    
+                    // Extract restaurant details from the response
+                    let restaurantId = result.restaurantInfo?["restaurantid"] as? String ?? id
+                    let restaurantName = result.restaurantInfo?["restaurantName"] as? String ?? ""
+                    let estimatedTime = result.restaurantInfo?["resturantEstimateTime"] as? Int ?? 30
+                    let cuisine = result.restaurantInfo?["resturantCusine"] as? String ?? ""
+                    
+                    // Log the restaurant details
+                    DebugLogger.shared.log("Restaurant details - ID: \(restaurantId), Name: \(restaurantName)", category: .auth)
+                    
+                    // Save restaurant ID separately - THIS IS CRUCIAL for correct API calls
+                    UserDefaults.standard.set(restaurantId, forKey: "restaurant_id")
+                    DebugLogger.shared.log("Restaurant ID saved: \(restaurantId)", category: .auth)
+                    
+                    // Save complete restaurant info from login response
+                    if let restaurantInfo = result.restaurantInfo {
+                        if let encodedData = try? JSONSerialization.data(withJSONObject: restaurantInfo) {
+                            UserDefaults.standard.set(encodedData, forKey: "restaurant_raw_data")
+                            DebugLogger.shared.log("Complete restaurant raw data saved to UserDefaults", category: .auth)
+                        }
+                    }
+                    
+                    // Save restaurant data in structured format as well
+                    let restaurantData: [String: Any] = [
+                        "id": restaurantId,
+                        "name": restaurantName,
+                        "estimatedTime": estimatedTime,
+                        "cuisine": cuisine
+                    ]
+                    if let encodedData = try? JSONSerialization.data(withJSONObject: restaurantData) {
+                        UserDefaults.standard.set(encodedData, forKey: "restaurant_data")
+                        DebugLogger.shared.log("Restaurant data saved to UserDefaults", category: .auth)
+                    }
+                    
+                    // Create a minimal profile
+                    self.currentUser = UserRestaurantProfile(
+                        id: id,
+                        restaurantId: restaurantId,
+                        restaurantName: restaurantName,
+                        estimatedTime: estimatedTime,
+                        cuisine: cuisine,
+                        restaurantImage: nil
+                    )
+                    
+                    // Update data controller
+                    DataController.shared.restaurant = RestaurantInfo(
+                        id: restaurantId,
+                        name: restaurantName,
+                        email: email,
+                        address: "",
+                        phone: "",
+                        categories: []
+                    )
+                }
+                
+                if let token = result.token {
+                    self.saveToken(token: token)
+                    DebugLogger.shared.log("Token saved", category: .auth)
+                }
+                
+                DebugLogger.shared.log("Login successful", category: .auth)
+            }
+            .store(in: &cancellables)
+    }
+    
+    /// Register new user
+    /// - Parameters:
+    ///   - email: User email
+    ///   - password: User password
+    ///   - name: User name
+    func register(email: String, password: String, name: String) {
+        isLoading = true
+        error = nil
+        
+        guard let url = URL(string: Endpoints.register) else {
+            error = "Invalid URL"
+            return
+        }
+        
+        // Create request
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Create body
+        let body: [String: Any] = [
+            "email": email,
+            "password": password,
+            "name": name
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            self.error = "Failed to encode registration data: \(error.localizedDescription)"
+            isLoading = false
+            return
+        }
+        
+        // Log the request
+        DebugLogger.shared.log("Restaurant registration request: \(Endpoints.register)", category: .auth)
+        
+        // Send request
+        URLSession.shared.dataTaskPublisher(for: request)
+            .map(\.data)
+            .tryMap { data -> (id: String?, token: String?) in
+                // Log raw response
+                if let responseString = String(data: data, encoding: .utf8) {
+                    DebugLogger.shared.log("Restaurant registration response: \(responseString)", category: .auth)
+                }
+                
+                // Try to parse as JSON
+                let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+                
+                // Extract id and token
+                let id = json?["id"] as? String
+                let token = json?["token"] as? String
+                
+                return (id: id, token: token)
+            }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] completion in
+                self?.isLoading = false
+                if case .failure(let err) = completion {
+                    self?.error = "Registration failed: \(err.localizedDescription)"
+                    DebugLogger.shared.log("Error registering: \(err)", category: .auth)
+                }
+            } receiveValue: { [weak self] result in
+                guard let self = self else { return }
+                
+                // Save ID and token
+                if let id = result.id {
+                    self.saveUserId(userId: id)
+                    DebugLogger.shared.log("User ID saved after registration: \(id)", category: .auth)
+                    
+                    // Set authenticated flag
+                    self.isAuthenticated = true
+                    
+                    // Create a minimal profile
+                    self.currentUser = UserRestaurantProfile(
+                        id: id,
+                        restaurantId: id,
+                        restaurantName: name,
+                        estimatedTime: 30,
+                        cuisine: "",
+                        restaurantImage: nil
+                    )
+                }
+                
+                if let token = result.token {
+                    self.saveToken(token: token)
+                    DebugLogger.shared.log("Token saved after registration", category: .auth)
+                }
+                
+                DebugLogger.shared.log("Registration successful", category: .auth)
+            }
+            .store(in: &cancellables)
+    }
+    
+    /// Fetch user profile
+    /// - Parameter userId: User ID
+    func fetchUserProfile(userId: String) {
+        isLoading = true
+        error = nil
+        
+        guard let url = URL(string: "\(Endpoints.profile)/\(userId)") else {
+            error = "Invalid URL"
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        
+        // Add auth token
+        if let token = getToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        // Send request
+        URLSession.shared.dataTaskPublisher(for: request)
+            .map(\.data)
+            .decode(type: ProfileResponse.self, decoder: JSONDecoder())
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] completion in
+                self?.isLoading = false
+                switch completion {
+                case .failure(let err):
+                    self?.error = "Failed to load profile: \(err.localizedDescription)"
+                    print("Error fetching profile: \(err)")
+                    // Clear token if unauthorized and set not authenticated
+                    if let httpResponse = err as? URLError,
+                       httpResponse.code.rawValue == 401 {
+                        self?.logout()
+                    }
+                case .finished:
+                    break
+                }
+            } receiveValue: { [weak self] response in
+                self?.currentUser = response.profile
+                // Ensure authentication state is set
+                self?.isAuthenticated = true
+                DebugLogger.shared.log("User profile loaded successfully, authentication confirmed", category: .auth)
+            }
+            .store(in: &cancellables)
+    }
+    
+    /// Logout user
+    func logout() {
+        // Log before clearing
+        if let userId = getUserId() {
+            DebugLogger.shared.log("Logging out user with ID: \(userId)", category: .auth)
+        } else {
+            DebugLogger.shared.log("Logging out user with no ID stored", category: .auth)
+        }
+        
+        // Clear token and user ID
+        UserDefaults.standard.removeObject(forKey: StorageKeys.authToken)
+        UserDefaults.standard.removeObject(forKey: StorageKeys.userId)
+        
+        // Clear NetworkManager token
+        NetworkManager.shared.clearAuthToken()
+        
+        // Reset state
+        self.currentUser = nil
+        self.isAuthenticated = false
+        
+        DebugLogger.shared.log("User logged out, all auth data cleared", category: .auth)
+    }
+    
+    // MARK: - Token Management
+    
+    /// Get the stored auth token
+    /// - Returns: Auth token string if available
+    func getToken() -> String? {
+        return UserDefaults.standard.string(forKey: StorageKeys.authToken)
+    }
+    
+    /// Get the stored user ID
+    /// - Returns: User ID string if available
+    func getUserId() -> String? {
+        return UserDefaults.standard.string(forKey: StorageKeys.userId)
+    }
+    
+    /// Save auth token
+    /// - Parameter token: The token to save
+    private func saveToken(token: String) {
+        UserDefaults.standard.set(token, forKey: StorageKeys.authToken)
+        NetworkManager.shared.setAuthToken(token)
+    }
+    
+    /// Save user ID
+    /// - Parameter userId: The user ID to save
+    private func saveUserId(userId: String) {
+        UserDefaults.standard.set(userId, forKey: StorageKeys.userId)
+    }
+    
+    /// Update user data
+    /// - Parameter user: Updated user information
+    func updateUserData(_ user: User) {
+        isLoading = true
+        error = nil
+        
+        guard let currentUser = currentUser else {
+            error = "No current user found"
+            isLoading = false
+            return
+        }
+        
+        // For now, we'll just update the local user data
+        // In a real app, you would make an API call to update the server
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            // Update the current user with the new values
+            self?.currentUser = UserRestaurantProfile(
+                id: currentUser.id,
+                restaurantId: currentUser.restaurantId,
+                restaurantName: user.restaurantName ?? "",
+                estimatedTime: currentUser.estimatedTime,
+                cuisine: currentUser.cuisine,
+                restaurantImage: currentUser.restaurantImage
+            )
+            
+            self?.isLoading = false
+            DebugLogger.shared.log("User data updated locally", category: .auth)
+        }
+    }
+    
+    // MARK: - Compatibility with Old AuthService Implementation
+    
+    /// Get the auth state (for compatibility with code calling old AuthService)
+    /// - Returns: AuthState object with token and userId
+    func getAuthState() throws -> AuthState {
+        guard let userId = getUserId() else {
+            throw NSError(domain: "AuthService", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+        }
+        
+        // Get token if available, but don't require it - the ID is the main thing
+        let token = getToken() ?? ""
+        
+        DebugLogger.shared.log("Getting auth state: userID=\(userId)", category: .auth)
+        return AuthState(token: token, userId: userId)
+    }
+    
+    /// Direct restaurant login (for compatibility with old implementation)
+    /// - Parameters:
+    ///   - email: User email
+    ///   - password: User password
+    /// - Returns: UserResponse
+    func loginRestaurantDirect(email: String, password: String) async throws -> UserResponse? {
+        isLoading = true
+        error = nil
+        
+        let body: [String: Any] = [
+            "email": email,
+            "password": password
+        ]
+        
+        do {
+            DebugLogger.shared.log("Sending restaurant login request to \(Endpoints.login)", category: .auth)
+            
+            // Manually construct the URL and request here for more control
+            guard let url = URL(string: Endpoints.login) else {
+                throw NSError(domain: "AuthService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
+            }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            let jsonData = try JSONSerialization.data(withJSONObject: body)
+            request.httpBody = jsonData
+            
+            let (data, httpResponse) = try await URLSession.shared.data(for: request)
+            
+            // Log the raw response
+            if let responseString = String(data: data, encoding: .utf8) {
+                DebugLogger.shared.log("Restaurant login response: \(responseString)", category: .auth)
+            }
+            
+            // Try parsing as a simple JSON object first (for the {id: "..."} format)
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let id = json["id"] as? String
+                let token = json["token"] as? String
+                
+                if let id = id {
+                    DebugLogger.shared.log("Received restaurant ID: \(id)", category: .auth)
+                    
+                    // Save the ID
+                    DispatchQueue.main.async { [weak self] in
+                        self?.saveUserId(userId: id)
+                        self?.isAuthenticated = true
+                        
+                        // Save token if available
+                        if let token = token {
+                            self?.saveToken(token: token)
+                            NetworkManager.shared.setAuthToken(token)
+                            DebugLogger.shared.log("Auth token saved", category: .auth)
+                        }
+                        
+                        // Create basic profile
+                        if self?.currentUser == nil {
+                            self?.currentUser = UserRestaurantProfile(
+                                id: id,
+                                restaurantId: id,
+                                restaurantName: "",
+                                estimatedTime: 30,
+                                cuisine: "",
+                                restaurantImage: nil
+                            )
+                        }
+                    }
+                    
+                    // Create response object
+                    return UserResponse(
+                        success: true,
+                        message: "Login successful",
+                        token: token,
+                        user: nil,
+                        id: id,
+                        username: nil,
+                        restaurantId: id,
+                        restaurantName: nil,
+                        estimatedTime: nil,
+                        cuisine: nil
+                    )
+                }
+            }
+            
+            // If we get here, try the NetworkManager approach as fallback
+            let response: UserResponse = try await NetworkManager.shared.performRequest(
+                endpoint: "/resturant-login",
+                method: "POST",
+                body: body
+            )
+            
+            DispatchQueue.main.async { [weak self] in
+                self?.isLoading = false
+            }
+            
+            DebugLogger.shared.log("Restaurant login response processed - success: \(response.success)", category: .auth)
+            
+            if let token = response.token, response.success {
+                // Save token to NetworkManager and UserDefaults
+                NetworkManager.shared.setAuthToken(token)
+                DebugLogger.shared.log("Auth token saved to NetworkManager", category: .auth)
+                
+                // Get user ID from the response
+                var userId: String? = nil
+                if let user = response.user {
+                    userId = user.id
+                } else if let directId = response.id {
+                    userId = directId
+                } else if let restaurantId = response.restaurantId {
+                    userId = restaurantId
+                }
+                
+                // Save auth state if we have a user ID
+                if let userId = userId {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.saveToken(token: token)
+                        self?.saveUserId(userId: userId)
+                        self?.isAuthenticated = true
+                        
+                        // Create a basic profile with the restaurant data
+                        if self?.currentUser == nil {
+                            self?.currentUser = UserRestaurantProfile(
+                                id: userId,
+                                restaurantId: response.restaurantId ?? userId,
+                                restaurantName: response.restaurantName ?? "",
+                                estimatedTime: response.estimatedTime ?? 30,
+                                cuisine: response.cuisine ?? "",
+                                restaurantImage: nil
+                            )
+                        }
+                    }
+                    DebugLogger.shared.log("Auth state saved and basic profile created", category: .auth)
+                }
+            }
+            
+            return response
+        } catch {
+            DispatchQueue.main.async { [weak self] in
+                self?.isLoading = false
+                self?.error = error.localizedDescription
+            }
+            
+            DebugLogger.shared.logError(error, tag: "RESTAURANT_LOGIN")
+            throw error
+        }
+    }
+    
+    /// Direct restaurant registration (for compatibility with old implementation)
+    /// - Parameters:
+    ///   - email: User email
+    ///   - password: User password
+    ///   - confirmPassword: Confirmation password
+    /// - Returns: UserResponse
+    func registerRestaurantDirect(email: String, password: String, confirmPassword: String = "") async throws -> UserResponse? {
+        isLoading = true
+        error = nil
+        
+        let body: [String: Any] = [
+            "email": email,
+            "password": password
+        ]
+        
+        do {
+            DebugLogger.shared.log("Sending restaurant registration request to \(Endpoints.register)", category: .auth)
+            
+            // Manually construct the URL and request here for more control
+            guard let url = URL(string: Endpoints.register) else {
+                throw NSError(domain: "AuthService", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
+            }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            
+            let jsonData = try JSONSerialization.data(withJSONObject: body)
+            request.httpBody = jsonData
+            
+            let (data, httpResponse) = try await URLSession.shared.data(for: request)
+            
+            // Log the raw response
+            if let responseString = String(data: data, encoding: .utf8) {
+                DebugLogger.shared.log("Restaurant registration response: \(responseString)", category: .auth)
+            }
+            
+            // Try parsing as a simple JSON object first (for the {id: "..."} format)
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let id = json["id"] as? String
+                let token = json["token"] as? String
+                
+                if let id = id {
+                    DebugLogger.shared.log("Received restaurant ID after registration: \(id)", category: .auth)
+                    
+                    // Save the ID
+                    DispatchQueue.main.async { [weak self] in
+                        self?.saveUserId(userId: id)
+                        self?.isAuthenticated = true
+                        
+                        // Save token if available
+                        if let token = token {
+                            self?.saveToken(token: token)
+                            NetworkManager.shared.setAuthToken(token)
+                            DebugLogger.shared.log("Auth token saved after registration", category: .auth)
+                        }
+                        
+                        // Create basic profile
+                        if self?.currentUser == nil {
+                            self?.currentUser = UserRestaurantProfile(
+                                id: id,
+                                restaurantId: id,
+                                restaurantName: "",
+                                estimatedTime: 30,
+                                cuisine: "",
+                                restaurantImage: nil
+                            )
+                        }
+                    }
+                    
+                    // Create response object
+                    return UserResponse(
+                        success: true,
+                        message: "Registration successful",
+                        token: token,
+                        user: nil,
+                        id: id,
+                        username: nil,
+                        restaurantId: id,
+                        restaurantName: nil,
+                        estimatedTime: nil,
+                        cuisine: nil
+                    )
+                }
+            }
+            
+            // If we get here, try the NetworkManager approach as fallback
+            let response: UserResponse = try await NetworkManager.shared.performRequest(
+                endpoint: "/resturant-register",
+                method: "POST",
+                body: body
+            )
+            
+            DispatchQueue.main.async { [weak self] in
+                self?.isLoading = false
+            }
+            
+            DebugLogger.shared.log("Restaurant registration response processed - success: \(response.success)", category: .auth)
+            
+            if let token = response.token, response.success {
+                // Save token to NetworkManager and UserDefaults
+                NetworkManager.shared.setAuthToken(token)
+                DebugLogger.shared.log("Auth token saved to NetworkManager", category: .auth)
+                
+                // Get user ID from the response
+                var userId: String? = nil
+                if let user = response.user {
+                    userId = user.id
+                } else if let directId = response.id {
+                    userId = directId
+                } else if let restaurantId = response.restaurantId {
+                    userId = restaurantId
+                }
+                
+                // Save auth state if we have a user ID
+                if let userId = userId {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.saveToken(token: token)
+                        self?.saveUserId(userId: userId)
+                        self?.isAuthenticated = true
+                    }
+                    DebugLogger.shared.log("Auth state saved", category: .auth)
+                }
+            }
+            
+            return response
+        } catch {
+            DispatchQueue.main.async { [weak self] in
+                self?.isLoading = false
+                self?.error = error.localizedDescription
+            }
+            
+            DebugLogger.shared.logError(error, tag: "RESTAURANT_REGISTRATION")
+            throw error
+        }
+    }
+}
+
+// MARK: - Auth State
+// struct AuthState {
+//     let token: String
+//     let userId: String
+// }
+
+// MARK: - Response Models
+struct AuthResponse: Codable {
+    let token: String
+    let user: User
+}
+
+struct ProfileResponse: Codable {
+    let profile: UserRestaurantProfile
+}
+
+// For compatibility with the old implementation
+// struct UserResponse: Codable {
+//     let success: Bool
+//     let message: String
+//     let token: String?
+//     let user: User?
+//     let id: String?
+//     let restaurantId: String?
+// } 

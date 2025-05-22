@@ -14,20 +14,35 @@ struct QSkipperAdminApp: App {
     @StateObject private var dataController = DataController.shared
     
     init() {
-        // Sample restaurant data - in a real app this would come from your backend
-        let restaurantData: [String: Any] = [
-            "id": "6661a32d4d1e0d993a73e666",
-            "restaurantid": "6661a3534d1e0d993a73e66a",
-            "restaurantName": "PR LIVE FOODS",
-            "resturantEstimateTime": 30,
-            "resturantCusine": "North India"
-        ]
-        
-        // Set restaurant data in DataController
-        DataController.shared.setRestaurantData(from: restaurantData)
-        
-        // Configure logging - use the proper property name
+        // Configure logging
         DebugLogger.shared.enableLogging = true
+        
+        // Clear any default or hardcoded restaurant data
+        clearDefaultRestaurantData()
+    }
+    
+    private func clearDefaultRestaurantData() {
+        // Check if user is logged in
+        if let userId = UserDefaults.standard.string(forKey: "qskipper_user_id"), !userId.isEmpty {
+            // User is logged in, don't clear data
+            DebugLogger.shared.log("User is logged in with ID: \(userId), keeping data", category: .auth)
+            return
+        }
+        
+        // Not logged in, clear potential default data
+        DebugLogger.shared.log("No user logged in, clearing any potential default restaurant data", category: .auth)
+        
+        // Clear all restaurant-related data
+        UserDefaults.standard.removeObject(forKey: "userData")
+        UserDefaults.standard.removeObject(forKey: "restaurantData")
+        UserDefaults.standard.removeObject(forKey: "restaurant_id")
+        UserDefaults.standard.removeObject(forKey: "restaurant_data")
+        UserDefaults.standard.removeObject(forKey: "restaurant_raw_data")
+        UserDefaults.standard.removeObject(forKey: "is_restaurant_registered")
+        UserDefaults.standard.synchronize()
+        
+        // Reset DataController's restaurant data
+        DataController.shared.clearData()
     }
     
     var body: some Scene {

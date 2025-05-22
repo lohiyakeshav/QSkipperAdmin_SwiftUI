@@ -42,11 +42,13 @@ struct RegisterFormView: View {
                         // Password field
                         SecureField("Password", text: $password)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .textContentType(.none)
                             .padding(.horizontal)
                         
                         // Confirm Password field
                         SecureField("Confirm Password", text: $confirmPassword)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .textContentType(.none)
                             .padding(.horizontal)
                         
                         // Register button

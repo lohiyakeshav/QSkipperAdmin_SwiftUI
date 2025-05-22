@@ -153,6 +153,8 @@ struct MainView: View {
                 switch selectedTab {
                 case .restaurant:
                     RestaurantManagementView()
+                        .environmentObject(authService)
+                        .environmentObject(dataController)
                 case .products:
                     ProductsView()
                 case .orders:

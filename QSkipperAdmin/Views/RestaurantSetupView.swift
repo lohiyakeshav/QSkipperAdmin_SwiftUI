@@ -80,7 +80,7 @@ struct RestaurantSetupView: View {
             }
             .navigationTitle("Setup Restaurant")
             .sheet(isPresented: $showImagePicker) {
-                ImagePicker(image: $selectedImage)
+                UIKitImagePicker(selectedImage: $selectedImage)
             }
         }
     }

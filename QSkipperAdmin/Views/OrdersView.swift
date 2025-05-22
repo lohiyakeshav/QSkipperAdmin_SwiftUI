@@ -68,8 +68,19 @@ struct ModernOrdersView: View {
                             await viewModel.refreshOrders()
                         }
                     } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundColor(themeColor)
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .medium))
+                            
+                            Text("New Orders")
+                                .font(AppFonts.buttonText)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(themeColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                        .frame(height: 36)
                     }
                 }
             }
@@ -207,15 +218,15 @@ struct ModernOrdersView: View {
                         themeColor: themeColor,
                         isProcessing: viewModel.isProcessing(order),
                         onCompleteOrder: {
-                            completeOrder(order)
-                        }
+                        completeOrder(order)
+                    }
                     )
                     .padding(.horizontal)
                     .onTapGesture {
                         // Don't open details for processing orders
                         if !viewModel.isProcessing(order) {
-                            selectedOrder = order
-                            showOrderDetail = true
+                        selectedOrder = order
+                        showOrderDetail = true
                         }
                     }
                     // Add a subtle animation when status changes

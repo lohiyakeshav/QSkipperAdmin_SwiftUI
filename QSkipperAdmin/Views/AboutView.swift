@@ -8,6 +8,14 @@
 import SwiftUI
 
 struct AboutView: View {
+    
+    let teamMembers = [
+        ("Baniya Bros", "Full Stack Devs Org", "person.3.sequence.fill", Color.blue),
+        ("Keshav Lohiya", "Full Stack Developer", "brain.fill", Color.green),
+        ("Vinayak Bansal", "Full Stack Developer", "hammer.fill", Color.orange),
+        ("Priyanshu Gupta", "Full Stack Developer", "server.rack", Color.purple)
+    ]
+    
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -55,9 +63,32 @@ struct AboutView: View {
                             .font(.title2)
                             .fontWeight(.semibold)
                         
-                        FeatureRow(icon: "building.2.fill", title: "Restaurant Management", description: "Update profile, hours, and contact information")
-                        FeatureRow(icon: "cube.fill", title: "Product Management", description: "Add, edit, and remove menu items with prices and categories")
-                        FeatureRow(icon: "bag.fill", title: "Order Management", description: "Process customer orders in real-time with status updates")
+                        FeatureItem(icon: "building.2.fill", title: "Restaurant Management", description: "Update profile, hours, and contact information")
+                        FeatureItem(icon: "cube.fill", title: "Product Management", description: "Add, edit, and remove menu items with prices and categories")
+                        FeatureItem(icon: "bag.fill", title: "Order Management", description: "Process customer orders in real-time with status updates")
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(12)
+                    
+                    // Team Members section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Our Team")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .padding(.bottom, 8)
+                        
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                            ForEach(teamMembers, id: \.0) { member in
+                                TeamMemberView(
+                                    name: member.0,
+                                    role: member.1,
+                                    color: member.3,
+                                    icon: member.2
+                                )
+                            }
+                        }
                     }
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -73,14 +104,7 @@ struct AboutView: View {
                         HStack {
                             Image(systemName: "envelope.fill")
                                 .foregroundColor(.green)
-                            Text("support@qskipper.com")
-                                .font(.body)
-                        }
-                        
-                        HStack {
-                            Image(systemName: "phone.fill")
-                                .foregroundColor(.green)
-                            Text("(123) 456-7890")
+                            Text("team.qskipper@gmail.com")
                                 .font(.body)
                         }
                         
@@ -100,7 +124,7 @@ struct AboutView: View {
                     
                     // Legal section
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("© 2023 QSkipper. All rights reserved.")
+                        Text("© 2025 QSkipper. All rights reserved.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
@@ -122,7 +146,7 @@ struct AboutView: View {
     }
 }
 
-struct FeatureRow: View {
+struct FeatureItem: View {
     let icon: String
     let title: String
     let description: String
@@ -130,25 +154,62 @@ struct FeatureRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 15) {
             Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(.green)
-                .frame(width: 30)
+                .font(.system(size: 16))
+                .foregroundColor(AppColors.primaryGreen)
+                .frame(width: 24, height: 24)
             
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(title)
-                    .font(.headline)
-                
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.primary)
                 Text(description)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 14))
+                    .foregroundColor(.gray)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.vertical, 5)
     }
 }
 
-struct AboutView_Previews: PreviewProvider {
-    static var previews: some View {
+struct TeamMemberView: View {
+    let name: String
+    let role: String
+    let color: Color
+    let icon: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 30, height: 30)
+                .foregroundColor(color)
+                .padding(8)
+                .background(color.opacity(0.1))
+                .clipShape(Circle())
+            Text(name)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(role)
+                .font(.system(size: 13))
+                .foregroundColor(.gray)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .background(RoundedRectangle(cornerRadius: 12).fill(color.opacity(0.05)))
+    }
+}
+
+#Preview {
+    NavigationView {
         AboutView()
     }
 } 

@@ -23,12 +23,12 @@ struct InputField: View {
                     if isShowingPassword {
                         TextField(placeholder, text: $text)
                             .keyboardType(keyboardType)
-                            .textContentType(contentType)
+                            .textContentType(contentType ?? .none)
                             .autocapitalization(autocapitalization)
                             .frame(height: 44)
                     } else {
                         SecureField(placeholder, text: $text)
-                            .textContentType(contentType)
+                            .textContentType(.none)
                             .frame(height: 44)
                     }
                     

@@ -114,15 +114,9 @@ struct HelpView: View {
                             .font(.body)
                             .foregroundColor(.primary)
                         
-                        HStack(spacing: 20) {
-                            ContactButton(icon: "envelope.fill", text: "Email Support", action: {
-                                openEmail()
-                            })
-                            
-                            ContactButton(icon: "phone.fill", text: "Call Support", action: {
-                                callSupport()
-                            })
-                        }
+                        ContactButton(icon: "envelope.fill", text: "Email Support", action: {
+                            openEmail()
+                        })
                     }
                     .padding()
                     .background(Color(.secondarySystemBackground))
@@ -159,14 +153,7 @@ struct HelpView: View {
     
     // Action to open email
     private func openEmail() {
-        if let url = URL(string: "mailto:support@qskipper.com") {
-            UIApplication.shared.open(url)
-        }
-    }
-    
-    // Action to call support
-    private func callSupport() {
-        if let url = URL(string: "tel:+11234567890") {
+        if let url = URL(string: "mailto:team.qskipper@gmail.com") {
             UIApplication.shared.open(url)
         }
     }
@@ -294,8 +281,6 @@ struct ContactButton: View {
     }
 }
 
-struct HelpView_Previews: PreviewProvider {
-    static var previews: some View {
-        HelpView()
-    }
+#Preview {
+    HelpView()
 } 

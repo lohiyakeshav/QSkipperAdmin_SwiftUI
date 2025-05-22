@@ -42,6 +42,9 @@ class DataController: ObservableObject {
     // MARK: - User Authentication
     
     func setCurrentUser(from userResponse: UserResponse) {
+        // Clear previous data first
+        clearData()
+        
         if let user = userResponse.user {
             self.currentUser = user
             DebugLogger.shared.log("Set current user from user object: \(user.id)", category: .auth)
@@ -86,6 +89,9 @@ class DataController: ObservableObject {
     }
     
     func setCurrentUser(from user: User) {
+        // Clear previous data first
+        clearData()
+        
         self.currentUser = user
         
         // If there's a restaurant ID, update restaurant data
@@ -108,12 +114,34 @@ class DataController: ObservableObject {
     }
     
     func logout() {
+        // Ensure we're on the main thread for @Published property updates
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.logout()
+            }
+            return
+        }
+        
         // Clear auth token
         NetworkManager.shared.clearAuthToken()
         
-        // Clear saved data
-        UserDefaults.standard.removeObject(forKey: "userData")
-        UserDefaults.standard.removeObject(forKey: "restaurantData")
+        // Reset in-memory models and clear UserDefaults
+        clearData()
+        
+        // Post notification
+        NotificationCenter.default.post(name: DataController.userDidLogoutNotification, object: nil)
+        DebugLogger.shared.log("User logged out, all data cleared", category: .auth)
+    }
+    
+    /// Clear all data in the DataController
+    func clearData() {
+        // Ensure we're on the main thread for @Published property updates
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.clearData()
+            }
+            return
+        }
         
         // Reset in-memory models
         self.currentUser = User(
@@ -135,9 +163,17 @@ class DataController: ObservableObject {
             categories: []
         )
         
-        // Post notification
-        NotificationCenter.default.post(name: DataController.userDidLogoutNotification, object: nil)
-        DebugLogger.shared.log("User logged out", category: .auth)
+        // Clear any cached data
+        UserDefaults.standard.removeObject(forKey: "userData")
+        UserDefaults.standard.removeObject(forKey: "restaurantData")
+        UserDefaults.standard.removeObject(forKey: "restaurant_id")
+        UserDefaults.standard.removeObject(forKey: "restaurant_data")
+        UserDefaults.standard.removeObject(forKey: "restaurant_raw_data")
+        
+        // Force UserDefaults to synchronize
+        UserDefaults.standard.synchronize()
+        
+        DebugLogger.shared.log("DataController data completely cleared", category: .auth)
     }
     
     func isLoggedIn() -> Bool {

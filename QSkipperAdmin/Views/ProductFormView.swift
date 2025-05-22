@@ -164,12 +164,13 @@ struct ProductFormView: View {
         
         Task {
             do {
+                // Try multipart method first (better for handling images)
                 if product == nil {
                     // Add new product
-                    _ = try await ProductApi.shared.createProduct(product: updatedProduct, image: selectedImage)
+                    _ = try await ProductApi.shared.createProductWithMultipart(product: updatedProduct, image: selectedImage)
                 } else {
                     // Update existing product
-                    _ = try await ProductApi.shared.createProduct(product: updatedProduct, image: selectedImage)
+                    _ = try await ProductApi.shared.createProductWithMultipart(product: updatedProduct, image: selectedImage)
                 }
                 
                 // Success
@@ -179,9 +180,27 @@ struct ProductFormView: View {
                     isPresented = false
                 }
             } catch {
-                await MainActor.run {
-                    isLoading = false
-                    errorMessage = error.localizedDescription
+                // If multipart fails, try standard method as fallback
+                do {
+                    if product == nil {
+                        // Add new product
+                        _ = try await ProductApi.shared.createProduct(product: updatedProduct, image: selectedImage)
+                    } else {
+                        // Update existing product
+                        _ = try await ProductApi.shared.createProduct(product: updatedProduct, image: selectedImage)
+                    }
+                    
+                    // Success
+                    await MainActor.run {
+                        isLoading = false
+                        errorMessage = nil
+                        isPresented = false
+                    }
+                } catch {
+                    await MainActor.run {
+                        isLoading = false
+                        errorMessage = error.localizedDescription
+                    }
                 }
             }
         }

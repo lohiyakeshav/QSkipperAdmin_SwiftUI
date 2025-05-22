@@ -8,6 +8,7 @@ struct RestaurantManagementView: View {
     // Environment
     @EnvironmentObject private var dataController: DataController
     @EnvironmentObject private var authService: AuthService
+    @StateObject private var restaurantService = RestaurantService()
     
     // State
     @State private var restaurantName: String = ""
@@ -15,6 +16,7 @@ struct RestaurantManagementView: View {
     @State private var selectedCuisine: String = "North Indian"
     @State private var restaurantImage: UIImage? = nil
     @State private var isImagePickerShown = false
+    @State private var isRegistered: Bool = true // Default to true, will be updated in onAppear
     
     // Product state
     @State private var productName: String = ""
@@ -55,7 +57,7 @@ struct RestaurantManagementView: View {
             .padding()
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .navigationTitle("Restaurant Profile")
+        .navigationTitle(isRegistered ? "Restaurant Profile" : "Register Restaurant")
         .sheet(isPresented: $isImagePickerShown) {
             UIKitImagePicker(selectedImage: $restaurantImage)
         }
@@ -68,6 +70,7 @@ struct RestaurantManagementView: View {
         }
         .onAppear {
             loadRestaurantData()
+            checkRegistrationStatus()
         }
     }
     
@@ -167,7 +170,7 @@ struct RestaurantManagementView: View {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     }
-                    Text("Save Changes")
+                    Text(isRegistered ? "Save Changes" : "Register Restaurant")
                         .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
@@ -182,12 +185,32 @@ struct RestaurantManagementView: View {
     
     // MARK: - Methods
     private func loadRestaurantData() {
+        // Load existing restaurant data if available
         if !dataController.restaurant.name.isEmpty {
             restaurantName = dataController.restaurant.name
         }
         
-        // Load other restaurant data if available
-        // Note: In a complete implementation, you would load all restaurant data here
+        // Load restaurant data from UserDefaults
+        if let restaurantDataEncoded = UserDefaults.standard.data(forKey: "restaurant_data"),
+           let restaurantData = try? JSONSerialization.jsonObject(with: restaurantDataEncoded, options: []) as? [String: Any] {
+            
+            if let name = restaurantData["name"] as? String, !name.isEmpty {
+                restaurantName = name
+            }
+            
+            if let time = restaurantData["estimatedTime"] as? Int {
+                estimatedTime = String(time)
+            }
+            
+            if let cuisine = restaurantData["cuisine"] as? String, !cuisine.isEmpty {
+                selectedCuisine = cuisine
+            }
+        }
+    }
+    
+    private func checkRegistrationStatus() {
+        // Check if restaurant is registered
+        isRegistered = UserDefaults.standard.bool(forKey: "is_restaurant_registered")
     }
     
     private func submitRestaurantProfile() {
@@ -195,11 +218,20 @@ struct RestaurantManagementView: View {
         
         isSubmitting = true
         
-        // Prepare the form data
-        let multipartFormData = createRestaurantFormData()
+        // Get the user ID
+        guard let userId = authService.getUserId() else {
+            showAlert(message: "User ID not found")
+            isSubmitting = false
+            return
+        }
         
-        // Send the API request
-        submitRestaurantData(multipartFormData: multipartFormData)
+        if isRegistered {
+            // Update existing restaurant
+            updateRestaurantProfile()
+        } else {
+            // Register new restaurant
+            registerNewRestaurant(userId: userId)
+        }
     }
     
     private func validateRestaurantFields() -> Bool {
@@ -225,24 +257,138 @@ struct RestaurantManagementView: View {
     private func createRestaurantFormData() -> [String: Any] {
         var formData: [String: Any] = [
             "restaurant_Name": restaurantName,
-            "userId": dataController.currentUser.id,
+            "userId": authService.getUserId() ?? "",
             "cuisines": selectedCuisine,
             "estimatedTime": Int(estimatedTime) ?? 30
         ]
         
         // Convert image to Base64
-        if let restaurantImage = restaurantImage, 
-           let imageData = restaurantImage.jpegData(compressionQuality: 0.7) {
-            let base64String = imageData.base64EncodedString()
-            formData["bannerPhoto64Image"] = base64String
+        if let restaurantImage = restaurantImage {
+            // Process image to ensure it's not too large
+            let maxSize: CGFloat = 600  // Reduced from 1200
+            var processedImage = restaurantImage
+            
+            if max(restaurantImage.size.width, restaurantImage.size.height) > maxSize {
+                let scale = maxSize / max(restaurantImage.size.width, restaurantImage.size.height)
+                let newWidth = restaurantImage.size.width * scale
+                let newHeight = restaurantImage.size.height * scale
+                let newSize = CGSize(width: newWidth, height: newHeight)
+                
+                UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+                restaurantImage.draw(in: CGRect(origin: .zero, size: newSize))
+                if let resizedImage = UIGraphicsGetImageFromCurrentImageContext() {
+                    processedImage = resizedImage
+                }
+                UIGraphicsEndImageContext()
+            }
+            
+            // Try to get JPEG data with very low compression quality (0.01 = 1%)
+            if let imageData = processedImage.jpegData(compressionQuality: 0.01) {
+                let base64String = imageData.base64EncodedString()
+                formData["bannerPhoto64Image"] = base64String
+                print("Image data size in form data: \(imageData.count) bytes")
+            } else {
+                print("Error: Failed to convert image to JPEG data")
+            }
         }
         
         return formData
     }
     
+    private func registerNewRestaurant(userId: String) {
+        // Try the multipart approach first (better for large images)
+        restaurantService.registerRestaurantWithMultipart(
+            userId: userId,
+            restaurantName: restaurantName,
+            cuisine: selectedCuisine,
+            estimatedTime: Int(estimatedTime) ?? 30,
+            bannerImage: restaurantImage
+        ) { result in
+            self.isSubmitting = false
+            
+            switch result {
+            case .success(let restaurantId):
+                self.handleSuccessfulRegistration(userId: userId, restaurantId: restaurantId)
+            case .failure(let error):
+                // If the multipart endpoint is not available, fall back to the regular method
+                print("Multipart registration failed: \(error.localizedDescription). Trying standard method...")
+                
+                // Fall back to regular registration
+                self.registerWithStandardMethod(userId: userId)
+            }
+        }
+    }
+    
+    private func registerWithStandardMethod(userId: String) {
+        // Use RestaurantService to register the restaurant with the old method
+        restaurantService.registerRestaurant(
+            userId: userId,
+            restaurantName: restaurantName,
+            cuisine: selectedCuisine,
+            estimatedTime: Int(estimatedTime) ?? 30,
+            bannerImage: restaurantImage
+        ) { result in
+            self.isSubmitting = false
+            
+            switch result {
+            case .success(let restaurantId):
+                self.handleSuccessfulRegistration(userId: userId, restaurantId: restaurantId)
+            case .failure(let error):
+                self.showAlert(message: error.localizedDescription)
+            }
+        }
+    }
+    
+    private func handleSuccessfulRegistration(userId: String, restaurantId: String) {
+        // Update UserDefaults with the new restaurant ID
+        UserDefaults.standard.set(restaurantId, forKey: "restaurant_id")
+        UserDefaults.standard.set(true, forKey: "is_restaurant_registered")
+        
+        // Update the restaurant data in UserDefaults
+        let restaurantData: [String: Any] = [
+            "id": restaurantId,
+            "name": self.restaurantName,
+            "estimatedTime": Int(self.estimatedTime) ?? 30,
+            "cuisine": self.selectedCuisine,
+            "isRegistered": true
+        ]
+        
+        if let encodedData = try? JSONSerialization.data(withJSONObject: restaurantData) {
+            UserDefaults.standard.set(encodedData, forKey: "restaurant_data")
+        }
+        
+        // Update the auth service with restaurant info
+        let updatedUser = UserRestaurantProfile(
+            id: userId,
+            restaurantId: restaurantId,
+            restaurantName: self.restaurantName,
+            estimatedTime: Int(self.estimatedTime) ?? 30,
+            cuisine: self.selectedCuisine,
+            restaurantImage: self.restaurantImage
+        )
+        self.authService.currentUser = updatedUser
+        
+        // Update the data controller
+        self.dataController.restaurant.id = restaurantId
+        self.dataController.restaurant.name = self.restaurantName
+        
+        // Update the isRegistered state
+        self.isRegistered = true
+        
+        self.showAlert(message: "Restaurant registered successfully")
+    }
+    
+    private func updateRestaurantProfile() {
+        // Prepare the form data
+        let multipartFormData = createRestaurantFormData()
+        
+        // Send the API request
+        submitRestaurantData(multipartFormData: multipartFormData)
+    }
+    
     private func submitRestaurantData(multipartFormData: [String: Any]) {
         // This is a simplified example. In a real app, use NetworkManager for this request
-        guard let url = URL(string: NetworkManager.baseURL + "/resturant-register") else {
+        guard let url = URL(string: NetworkManager.baseURL + "/register-restaurant") else {
             showAlert(message: "Invalid URL")
             isSubmitting = false
             return
@@ -276,7 +422,46 @@ struct RestaurantManagementView: View {
                 
                 do {
                     if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        if let success = json["success"] as? Bool, success {
+                        if let restaurantId = json["_id"] as? String {
+                            // Update UserDefaults with the new restaurant ID
+                            UserDefaults.standard.set(restaurantId, forKey: "restaurant_id")
+                            UserDefaults.standard.set(true, forKey: "is_restaurant_registered")
+                            
+                            // Update the restaurant data in UserDefaults
+                            let restaurantData: [String: Any] = [
+                                "id": restaurantId,
+                                "name": self.restaurantName,
+                                "estimatedTime": Int(self.estimatedTime) ?? 30,
+                                "cuisine": self.selectedCuisine,
+                                "isRegistered": true
+                            ]
+                            
+                            if let encodedData = try? JSONSerialization.data(withJSONObject: restaurantData) {
+                                UserDefaults.standard.set(encodedData, forKey: "restaurant_data")
+                            }
+                            
+                            // Update the auth service with restaurant info
+                            if let userId = self.authService.getUserId() {
+                                let updatedUser = UserRestaurantProfile(
+                                    id: userId,
+                                    restaurantId: restaurantId,
+                                    restaurantName: self.restaurantName,
+                                    estimatedTime: Int(self.estimatedTime) ?? 30,
+                                    cuisine: self.selectedCuisine,
+                                    restaurantImage: self.restaurantImage
+                                )
+                                self.authService.currentUser = updatedUser
+                            }
+                            
+                            // Update the data controller
+                            self.dataController.restaurant.id = restaurantId
+                            self.dataController.restaurant.name = self.restaurantName
+                            
+                            // Update the isRegistered state
+                            self.isRegistered = true
+                            
+                            self.showAlert(message: "Restaurant registered successfully")
+                        } else if let success = json["success"] as? Bool, success {
                             self.showAlert(message: "Restaurant profile updated successfully")
                         } else if let message = json["message"] as? String {
                             self.showAlert(message: message)

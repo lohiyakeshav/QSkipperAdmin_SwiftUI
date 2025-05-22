@@ -34,6 +34,39 @@ struct OrderDetailView: View {
                     }
                 }
                 
+                // Scheduled Time Alert (Priority box for scheduled orders)
+                if order.isScheduled, let timeRemaining = order.timeUntilScheduled {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundColor(.orange)
+                            Text("Scheduled Order")
+                                .font(.headline)
+                                .foregroundColor(themeColor)
+                        }
+                        
+                        HStack {
+                            Image(systemName: "calendar.badge.clock")
+                                .foregroundColor(themeColor)
+                            Text(order.formattedDate)
+                                .font(.headline)
+                                .foregroundColor(themeColor)
+                        }
+                        
+                        HStack {
+                            Image(systemName: "timer")
+                                .foregroundColor(.orange)
+                            Text(timeRemaining)
+                                .foregroundColor(.orange)
+                                .fontWeight(.medium)
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(themeColor.opacity(0.15))
+                    .cornerRadius(12)
+                }
+                
                 // Order ID and Status Section
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Order #\(order.id.suffix(6))")
@@ -51,18 +84,6 @@ struct OrderDetailView: View {
                             .background(getStatusColor().opacity(0.2))
                             .foregroundColor(getStatusColor())
                             .clipShape(Capsule())
-                    }
-                    
-                    if order.isScheduled {
-                        HStack {
-                            Image(systemName: "calendar.badge.clock")
-                                .foregroundColor(themeColor)
-                            Text("Scheduled Order")
-                                .font(.subheadline)
-                                .foregroundColor(themeColor)
-                                .fontWeight(.medium)
-                        }
-                        .padding(.top, 4)
                     }
                 }
                 .padding()
@@ -82,10 +103,14 @@ struct OrderDetailView: View {
                     Divider()
                     
                     if order.isScheduled {
-                        infoRow(label: "Scheduled For", value: order.formattedDate.replacingOccurrences(of: "Scheduled for ", with: ""))
-                        infoRow(label: "Order Placed", value: order.formattedOrderTime)
+                        infoRow(
+                            label: "Delivery Time", 
+                            value: order.scheduledDateTime.displayString,
+                            isHighlighted: true
+                        )
+                        infoRow(label: "Order Placed", value: order.orderDateTime.displayString)
                     } else {
-                        infoRow(label: "Date", value: order.formattedDate)
+                        infoRow(label: "Order Time", value: order.orderDateTime.displayString)
                     }
                     
                     infoRow(label: "Cook Time", value: "\(order.cookTime) minutes")
@@ -190,7 +215,7 @@ struct OrderDetailView: View {
                         isProcessing = true
                         // Use DispatchQueue to create a slight delay to ensure UI updates
                         DispatchQueue.main.async {
-                            onCompleteOrder?()
+                        onCompleteOrder?()
                         }
                     } label: {
                         HStack {
@@ -204,15 +229,15 @@ struct OrderDetailView: View {
                             }
                             
                             Text(isProcessing ? "Processing..." : "Mark as Completed")
-                                .fontWeight(.semibold)
+                            .fontWeight(.semibold)
                             
                             Spacer()
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding()
+                            .frame(maxWidth: .infinity)
+                            .padding()
                         .background(isProcessing ? themeColor.opacity(0.7) : themeColor)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
                     }
                     .padding(.top, 10)
                     .disabled(isProcessing)
@@ -231,7 +256,7 @@ struct OrderDetailView: View {
         }
     }
     
-    private func infoRow(label: String, value: String) -> some View {
+    private func infoRow(label: String, value: String, isHighlighted: Bool = false) -> some View {
         HStack {
             Text(label)
                 .foregroundColor(.secondary)
@@ -239,7 +264,8 @@ struct OrderDetailView: View {
             Spacer()
             
             Text(value)
-                .fontWeight(.medium)
+                .fontWeight(isHighlighted ? .bold : .medium)
+                .foregroundColor(isHighlighted ? themeColor : .primary)
         }
     }
     

@@ -38,26 +38,55 @@ struct OrderCardView: View {
             Divider()
             
             // Date and takeaway info
+            if order.isScheduled {
+                // Special prominent display for scheduled orders
+                HStack(alignment: .top) {
+                    Image(systemName: "calendar.badge.clock")
+                        .foregroundColor(themeColor)
+                        .font(.system(size: 16))
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(order.formattedDate)
+                            .font(.subheadline)
+                            .foregroundColor(themeColor)
+                            .fontWeight(.bold)
+                        
+                        Text(order.formattedOrderTime)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        // Show time remaining
+                        if let timeRemaining = order.timeUntilScheduled {
+                            Text(timeRemaining)
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                                .padding(.top, 2)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    if order.takeAway {
+                        Label("Takeaway", systemImage: "bag")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Label("Dine-in", systemImage: "fork.knife")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(8)
+                .background(themeColor.opacity(0.1))
+                .cornerRadius(8)
+            } else {
+                // Regular display for non-scheduled orders
             HStack {
                 Image(systemName: "calendar")
                     .foregroundColor(.secondary)
                 
-                // Include indication this is a scheduled order
-                if order.isScheduled {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(order.formattedDate)
-                            .font(.subheadline)
-                            .foregroundColor(themeColor)
-                            .fontWeight(.medium)
-                        
-                        Text("Ordered on \(order.formattedOrderTime)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                } else {
-                    Text(order.formattedDate)
-                        .font(.subheadline)
-                }
+                Text(order.formattedDate)
+                    .font(.subheadline)
                 
                 Spacer()
                 
@@ -69,6 +98,7 @@ struct OrderCardView: View {
                     Label("Dine-in", systemImage: "fork.knife")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    }
                 }
             }
             

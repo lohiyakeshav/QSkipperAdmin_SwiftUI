@@ -130,6 +130,7 @@ struct LoginUIView: View {
                         .padding()
                         .background(AppColors.lightGray)
                         .cornerRadius(10)
+                        .textContentType(.none)
                 }
                 
                 // Forgot password link

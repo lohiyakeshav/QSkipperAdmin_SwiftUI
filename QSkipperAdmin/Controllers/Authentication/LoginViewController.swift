@@ -285,20 +285,21 @@ struct LoginControllerView: View {
                     .background(colorScheme == .dark ? Color.black.opacity(0.1) : Color.black.opacity(0.05))
                     .cornerRadius(10)
                     .disabled(viewModel.isLoading)
+                    .textContentType(.none)
             }
             
             // Forgot password
-            HStack {
-                Spacer()
-                
-                Button(action: {
-                    // viewModel.forgotPassword()
-                }) {
-                    Text("Forgot Password?")
-                        .font(AppFonts.caption)
-                        .foregroundColor(AppColors.primaryGreen)
-                }
-            }
+//            HStack {
+//                Spacer()
+//                
+//                Button(action: {
+//                    // viewModel.forgotPassword()
+//                }) {
+//                    Text("Forgot Password?")
+//                        .font(AppFonts.caption)
+//                        .foregroundColor(AppColors.primaryGreen)
+//                }
+//            }
             .padding(.top, 4)
             
             // Login button

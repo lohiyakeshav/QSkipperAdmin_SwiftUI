@@ -39,7 +39,11 @@ class NetworkManager {
     static let shared = NetworkManager()
     
     // Changed to static and public so it can be accessed from other classes
+    #if DEBUG
     static let baseURL = "http://localhost:3000"
+    #else
+    static let baseURL = "https://qskipperbackend.onrender.com"
+    #endif
     private var authToken: String?
     
     // Image cache

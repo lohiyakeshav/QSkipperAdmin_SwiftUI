@@ -73,13 +73,12 @@ class ModernOrdersViewModel: ObservableObject {
     // Helper to get the appropriate date from an order
     private func getOrderDate(_ order: APIOrder) -> Date? {
         // If it's a scheduled order, use schedule date
-        if let scheduleString = order.scheduleDate,
-           let scheduleDate = ISO8601DateFormatter().date(from: scheduleString) {
-            return scheduleDate
+        if let scheduleString = order.scheduleDate {
+            return order.parseISODateString(scheduleString)
         }
         
         // Otherwise use order time
-        return ISO8601DateFormatter().date(from: order.orderTime)
+        return order.parseISODateString(order.orderTime)
     }
     
     // MARK: - Lifecycle
@@ -148,8 +147,8 @@ class ModernOrdersViewModel: ObservableObject {
             await MainActor.run {
                 // Clear processing state
                 self.processingOrderId = nil
-                
-                if success {
+            
+            if success {
                     // Show success notification
                     self.completionSuccess = true
                     
@@ -199,5 +198,13 @@ class ModernOrdersViewModel: ObservableObject {
     /// Reload orders (for pull-to-refresh)
     func refreshOrders() async {
         await loadOrders()
+    }
+    
+    /// Debug the date format for orders
+    /// - Parameter orderId: Optional - The ID of the order to debug. If nil, will debug all orders.
+    func debugOrderDateFormat(orderId: String? = nil) {
+        Task {
+            await OrderApi.shared.debugOrderDateFormat(orderId: orderId)
+        }
     }
 } 

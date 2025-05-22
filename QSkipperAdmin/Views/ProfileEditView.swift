@@ -140,10 +140,15 @@ struct ProfileEditView: View {
             bannerPhoto: selectedImage
         )
         
+        // Log the update attempt
+        DebugLogger.shared.log("Updating restaurant profile: \(restaurant.id)", category: .network)
+        
         // Update restaurant
         restaurantService.updateRestaurant(restaurant: restaurant) { result in
             switch result {
             case .success(let updatedRestaurant):
+                DebugLogger.shared.log("Restaurant profile update successful", category: .network)
+                
                 // Update auth service with restaurant info
                 let updatedUser = UserRestaurantProfile(
                     id: currentUser.id,
@@ -159,7 +164,30 @@ struct ProfileEditView: View {
                 showSuccessAlert = true
                 
             case .failure(let error):
-                restaurantService.error = error.localizedDescription
+                DebugLogger.shared.logError(error, tag: "RESTAURANT_UPDATE")
+                restaurantService.error = "Update failed: \(error.localizedDescription)"
+                
+                // If there's a selected image and the update failed, try uploading the image separately
+                if let image = selectedImage {
+                    DebugLogger.shared.log("Attempting to upload restaurant image separately", category: .network)
+                    uploadRestaurantImage(restaurantId: currentUser.restaurantId, image: image)
+                }
+            }
+        }
+    }
+    
+    private func uploadRestaurantImage(restaurantId: String, image: UIImage) {
+        restaurantService.uploadRestaurantImage(restaurantId: restaurantId, image: image) { result in
+            switch result {
+            case .success(let message):
+                DebugLogger.shared.log("Restaurant image upload successful: \(message)", category: .network)
+                
+                // Show success alert even if only the image upload succeeded
+                showSuccessAlert = true
+                
+            case .failure(let error):
+                DebugLogger.shared.logError(error, tag: "RESTAURANT_IMAGE_UPLOAD")
+                restaurantService.error = "Image upload failed: \(error.localizedDescription)"
             }
         }
     }

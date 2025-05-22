@@ -297,6 +297,7 @@ class AddEditProductViewModel: ObservableObject {
         
         Task {
             do {
+                // Try using multipart method first (better for handling images)
                 if isEditMode {
                     if case .edit(let product) = mode {
                         var updatedProduct = product
@@ -306,9 +307,9 @@ class AddEditProductViewModel: ObservableObject {
                         updatedProduct.category = category
                         updatedProduct.isActive = isActive
                         
-                        // Update using ProductService
+                        // Update using multipart
                         updatedProduct.productPhoto = selectedImage
-                        let _ = try await ProductApi.shared.createProduct(product: updatedProduct, image: selectedImage)
+                        let _ = try await ProductApi.shared.createProductWithMultipart(product: updatedProduct, image: selectedImage)
                     }
                 } else {
                     // Create a new product
@@ -322,7 +323,7 @@ class AddEditProductViewModel: ObservableObject {
                         productPhoto: selectedImage
                     )
                     
-                    let _ = try await ProductApi.shared.createProduct(product: newProduct, image: selectedImage)
+                    let _ = try await ProductApi.shared.createProductWithMultipart(product: newProduct, image: selectedImage)
                 }
                 
                 DispatchQueue.main.async { [weak self] in
@@ -330,10 +331,46 @@ class AddEditProductViewModel: ObservableObject {
                     self?.onComplete()
                 }
             } catch {
-                DispatchQueue.main.async { [weak self] in
-                    self?.isLoading = false
-                    self?.errorMessage = error.localizedDescription
-                    self?.showErrorAlert = true
+                // If multipart fails, try standard method as fallback
+                do {
+                    if isEditMode {
+                        if case .edit(let product) = mode {
+                            var updatedProduct = product
+                            updatedProduct.name = name
+                            updatedProduct.description = description
+                            updatedProduct.price = Int(price)
+                            updatedProduct.category = category
+                            updatedProduct.isActive = isActive
+                            
+                            // Update using standard method
+                            updatedProduct.productPhoto = selectedImage
+                            let _ = try await ProductApi.shared.createProduct(product: updatedProduct, image: selectedImage)
+                        }
+                    } else {
+                        // Create a new product
+                        let newProduct = Product(
+                            name: name,
+                            price: Int(price),
+                            restaurantId: DataController.shared.restaurant.id,
+                            category: category,
+                            description: description,
+                            isActive: isActive,
+                            productPhoto: selectedImage
+                        )
+                        
+                        let _ = try await ProductApi.shared.createProduct(product: newProduct, image: selectedImage)
+                    }
+                    
+                    DispatchQueue.main.async { [weak self] in
+                        self?.isLoading = false
+                        self?.onComplete()
+                    }
+                } catch {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.isLoading = false
+                        self?.errorMessage = error.localizedDescription
+                        self?.showErrorAlert = true
+                    }
                 }
             }
         }

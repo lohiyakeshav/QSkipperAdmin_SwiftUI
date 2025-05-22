@@ -15,6 +15,7 @@ class DebugLogger {
         case error = "ERROR"
         case custom = "CUSTOM"
         case userAction = "USER_ACTION"
+        case debug = "DEBUG"
     }
     
     private let dateFormatter: DateFormatter = {

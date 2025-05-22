@@ -459,11 +459,12 @@ struct AddProductView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Product Information")) {
+                Section(header: Text("Product Information").foregroundColor(Color(AppColors.primaryGreen))) {
                     TextField("Product Name", text: $productName)
                     
                     HStack {
                         Text("₹")
+                            .foregroundColor(Color(AppColors.primaryGreen))
                         TextField("Price", text: $productPrice)
                             .keyboardType(.decimalPad)
                     }
@@ -474,15 +475,16 @@ struct AddProductView: View {
                         TextField("Extra Time (minutes)", text: $preparationTime)
                             .keyboardType(.numberPad)
                         Text("minutes")
+                            .foregroundColor(Color(AppColors.primaryGreen))
                     }
                 }
                 
-                Section(header: Text("Description")) {
+                Section(header: Text("Description").foregroundColor(Color(AppColors.primaryGreen))) {
                     TextEditor(text: $productDescription)
                         .frame(minHeight: 100)
                 }
                 
-                Section(header: Text("Product Image")) {
+                Section(header: Text("Product Image").foregroundColor(Color(AppColors.primaryGreen))) {
                     HStack {
                         Spacer()
                         
@@ -516,6 +518,7 @@ struct AddProductView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
+                        .foregroundColor(Color(AppColors.primaryGreen))
                     }
                 }
                 
@@ -527,15 +530,22 @@ struct AddProductView: View {
                             if isSubmitting {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle())
+                                    .tint(Color(AppColors.primaryGreen))
                             }
                             
                             Text("Add Product")
                                 .fontWeight(.semibold)
+                                .foregroundColor(.white)
                             
                             Spacer()
                         }
+                        .padding(.vertical, 12)
+                        .background(Color(AppColors.primaryGreen))
+                        .cornerRadius(8)
                     }
                     .disabled(isSubmitting)
+                    .buttonStyle(PlainButtonStyle())
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 }
             }
             .navigationTitle("Add Product")
@@ -545,6 +555,7 @@ struct AddProductView: View {
                     Button("Cancel") {
                         presentationMode.wrappedValue.dismiss()
                     }
+                    .foregroundColor(Color(AppColors.primaryGreen))
                 }
             }
             .sheet(isPresented: $isImagePickerShown) {
@@ -556,9 +567,12 @@ struct AddProductView: View {
                         presentationMode.wrappedValue.dismiss()
                     }
                 }
+                .foregroundColor(Color(AppColors.primaryGreen))
             } message: {
                 Text(alertMessage)
             }
+            .accentColor(Color(AppColors.primaryGreen))
+            .tint(Color(AppColors.primaryGreen))
         }
     }
     
@@ -579,19 +593,30 @@ struct AddProductView: View {
             isActive: true
         )
         
-        // Submit product to API
+        // Submit product to API using multipart (better for handling images)
         Task {
             do {
-                let _ = try await ProductApi.shared.createProduct(product: product, image: productImage)
+                // Try multipart method first (better for handling images)
+                let _ = try await ProductApi.shared.createProductWithMultipart(product: product, image: productImage)
                 
                 await MainActor.run {
                     isSubmitting = false
                     showAlert(message: "Product added successfully")
                 }
             } catch {
-                await MainActor.run {
-                    isSubmitting = false
-                    showAlert(message: "Error: \(error.localizedDescription)")
+                // If multipart fails, try with standard method as fallback
+                do {
+                    let _ = try await ProductApi.shared.createProduct(product: product, image: productImage)
+                    
+                    await MainActor.run {
+                        isSubmitting = false
+                        showAlert(message: "Product added successfully")
+                    }
+                } catch {
+                    await MainActor.run {
+                        isSubmitting = false
+                        showAlert(message: "Error: \(error.localizedDescription)")
+                    }
                 }
             }
         }

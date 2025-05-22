@@ -14,6 +14,22 @@ struct UIKitImagePicker: UIViewControllerRepresentable {
         
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
+        
+        // Apply green theme to the picker
+        if let navigationBar = picker.navigationController?.navigationBar {
+            let appearance = UINavigationBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            
+            if let primaryGreen = UIColor(hex: "#34C759") {
+                navigationBar.tintColor = primaryGreen
+                appearance.titleTextAttributes = [.foregroundColor: primaryGreen]
+                appearance.buttonAppearance.normal.titleTextAttributes = [.foregroundColor: primaryGreen]
+            }
+            
+            navigationBar.standardAppearance = appearance
+            navigationBar.scrollEdgeAppearance = appearance
+        }
+        
         return picker
     }
     

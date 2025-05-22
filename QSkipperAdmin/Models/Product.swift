@@ -26,8 +26,59 @@ struct Product: Codable, Identifiable {
             return UIImage(data: data)
         }
         set {
-            if let newImage = newValue, let data = newImage.jpegData(compressionQuality: 0.7) {
-                productPhoto64Image = data.base64EncodedString()
+            if let newImage = newValue {
+                // First resize the image to reasonable dimensions
+                let maxSize: CGFloat = 600 // Same as restaurant images
+                var processedImage = newImage
+                
+                if max(newImage.size.width, newImage.size.height) > maxSize {
+                    let scale = maxSize / max(newImage.size.width, newImage.size.height)
+                    let newWidth = newImage.size.width * scale
+                    let newHeight = newImage.size.height * scale
+                    let newSize = CGSize(width: newWidth, height: newHeight)
+                    
+                    UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+                    newImage.draw(in: CGRect(origin: .zero, size: newSize))
+                    if let resizedImage = UIGraphicsGetImageFromCurrentImageContext() {
+                        processedImage = resizedImage
+                    }
+                    UIGraphicsEndImageContext()
+                }
+                
+                // Start with medium compression quality
+                var compression: CGFloat = 0.5
+                var imageData = processedImage.jpegData(compressionQuality: compression)!
+                
+                // Binary search to find best compression quality to meet target size
+                var max: CGFloat = 1.0
+                var min: CGFloat = 0.0
+                let targetSizeKB = 500 // Target 500KB
+                
+                // Max 6 attempts to find the right compression level
+                for _ in 0..<6 {
+                    let targetSize = targetSizeKB * 1024 // Convert to bytes
+                    
+                    if imageData.count <= targetSize {
+                        // Image is already smaller than target size, try increasing quality
+                        min = compression
+                        compression = (max + compression) / 2
+                    } else {
+                        // Image is larger than target size, try decreasing quality
+                        max = compression
+                        compression = (min + compression) / 2
+                    }
+                    
+                    // Get new data with adjusted compression
+                    imageData = processedImage.jpegData(compressionQuality: compression)!
+                    
+                    // If we're within 10% of the target size, it's good enough
+                    if Double(abs(imageData.count - targetSize)) < (Double(targetSize) * 0.1) {
+                        break
+                    }
+                }
+                
+                productPhoto64Image = imageData.base64EncodedString()
+                print("Product image size in base64: \(imageData.count / 1024) KB")
             } else {
                 productPhoto64Image = nil
             }

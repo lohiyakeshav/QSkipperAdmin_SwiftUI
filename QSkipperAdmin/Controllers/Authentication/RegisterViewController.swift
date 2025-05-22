@@ -334,7 +334,7 @@ struct RegisterView: View {
                         .font(AppFonts.body)
                         .foregroundColor(AppColors.darkGray)
                     
-                    TextField("restaurant@example.com", text: $viewModel.email)
+                    TextField("Enter your email address", text: $viewModel.email)
                         .font(AppFonts.body)
                         .padding()
                         .background(AppColors.lightGray)
@@ -361,6 +361,7 @@ struct RegisterView: View {
                         .padding()
                         .background(AppColors.lightGray)
                         .cornerRadius(8)
+                        .textContentType(.none)
                     
                     if let error = viewModel.passwordError {
                         Text(error)

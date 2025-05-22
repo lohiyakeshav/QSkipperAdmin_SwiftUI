@@ -260,7 +260,7 @@ struct ProductDetailView_Previews: PreviewProvider {
                 id: "123",
                 name: "Cheese Pizza",
                 price: 12,
-                restaurantId: "rest1",
+                restaurantId: "",
                 category: "Pizza",
                 description: "Delicious cheese pizza with our signature tomato sauce and premium mozzarella cheese.",
                 extraTime: 15,

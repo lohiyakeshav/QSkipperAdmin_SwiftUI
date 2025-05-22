@@ -295,7 +295,7 @@ struct OrderDetailView_Previews: PreviewProvider {
     static var previews: some View {
         let sampleOrder = APIOrder(
             id: "6829e56298cf46b5a6c7d1e0",
-            restaurantId: "6661a3534d1e0d993a73e66a",
+                            restaurantId: "",
             userId: "67f3c28f88bf68596e89b7af",
             items: [
                 APIOrderProduct(

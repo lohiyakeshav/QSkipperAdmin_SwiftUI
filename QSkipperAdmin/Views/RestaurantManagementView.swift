@@ -71,6 +71,31 @@ struct RestaurantManagementView: View {
         .onAppear {
             loadRestaurantData()
             checkRegistrationStatus()
+            
+            // Force attempt to load restaurant image - try both user ID and restaurant ID
+            if let userId = authService.getUserId() {
+                RestaurantService.shared.fetchRestaurantImage(restaurantId: userId) { image in
+                    if let image = image {
+                        DispatchQueue.main.async {
+                            self.restaurantImage = image
+                            DebugLogger.shared.log("Successfully loaded restaurant image from user ID", category: .network, tag: "RESTAURANT_MANAGEMENT")
+                        }
+                    }
+                }
+            }
+            
+            // Also try with restaurant ID if different
+            if let restaurantId = UserDefaults.standard.string(forKey: "restaurant_id"), 
+               restaurantId != authService.getUserId() {
+                RestaurantService.shared.fetchRestaurantImage(restaurantId: restaurantId) { image in
+                    if let image = image {
+                        DispatchQueue.main.async {
+                            self.restaurantImage = image
+                            DebugLogger.shared.log("Successfully loaded restaurant image from restaurant ID", category: .network, tag: "RESTAURANT_MANAGEMENT")
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -164,30 +189,58 @@ struct RestaurantManagementView: View {
             .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
             
             // Submit button
-            Button(action: submitRestaurantProfile) {
-                HStack {
-                    if isSubmitting {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            if !shouldHideSaveButton() {
+                Button(action: submitRestaurantProfile) {
+                    HStack {
+                        if isSubmitting {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        }
+                        Text(isRegistered ? "Save Changes" : "Register Restaurant")
+                            .fontWeight(.semibold)
                     }
-                    Text(isRegistered ? "Save Changes" : "Register Restaurant")
-                        .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(10)
+                .disabled(isSubmitting)
             }
-            .disabled(isSubmitting)
         }
     }
     
     // MARK: - Methods
+    private func shouldHideSaveButton() -> Bool {
+        // Always hide the button when fields are filled and registered
+        if isRegistered && !restaurantName.isEmpty && !estimatedTime.isEmpty && !selectedCuisine.isEmpty && restaurantImage != nil {
+            return true
+        }
+        
+        // Also hide if there's an active submission
+        if isSubmitting {
+            return true
+        }
+        
+        return false
+    }
+    
     private func loadRestaurantData() {
         // Load existing restaurant data if available
         if !dataController.restaurant.name.isEmpty {
             restaurantName = dataController.restaurant.name
+        }
+        
+        // Try to load restaurant image if we have a restaurantId
+        if let restaurantId = authService.getUserId(), restaurantImage == nil {
+            RestaurantService.shared.fetchRestaurantImage(restaurantId: restaurantId) { image in
+                if let image = image {
+                    DispatchQueue.main.async {
+                        self.restaurantImage = image
+                        DebugLogger.shared.log("Successfully loaded restaurant image", category: .network, tag: "RESTAURANT_MANAGEMENT")
+                    }
+                }
+            }
         }
         
         // Load restaurant data from UserDefaults

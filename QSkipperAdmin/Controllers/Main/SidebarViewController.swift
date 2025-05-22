@@ -307,6 +307,18 @@ struct SidebarView: View {
                     // Set owner name
                     if let userId = AuthService.shared.getUserId() {
                         self.userName = "Owner ID: \(String(userId.prefix(8)))..."
+                        
+                        // Try to load restaurant image from server if it's not already set
+                        if self.restaurantImage == nil {
+                            RestaurantService.shared.fetchRestaurantImage(restaurantId: userId) { image in
+                                if let image = image {
+                                    DispatchQueue.main.async {
+                                        self.restaurantImage = image
+                                        DebugLogger.shared.log("Successfully loaded restaurant image in sidebar", category: .network, tag: "SIDEBAR_IMAGE")
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         self.userName = "Restaurant Owner"
                     }

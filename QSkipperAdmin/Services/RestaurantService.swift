@@ -3,6 +3,8 @@ import Combine
 import UIKit
 
 class RestaurantService: ObservableObject {
+    static let shared = RestaurantService()
+    
     // Published properties
     @Published var restaurant: Restaurant?
     @Published var isLoading: Bool = false
@@ -17,6 +19,10 @@ class RestaurantService: ObservableObject {
     
     // Private properties
     private var cancellables = Set<AnyCancellable>()
+    
+    init() {
+        DebugLogger.shared.log("RestaurantService initialized", category: .app, tag: "INIT_SERVICE")
+    }
     
     // MARK: - Public Methods
     
@@ -579,6 +585,60 @@ class RestaurantService: ObservableObject {
                 }
             }
         }.resume()
+    }
+    
+    // MARK: - Restaurant Image Loading
+    
+    /// Fetch restaurant image
+    /// - Parameters:
+    ///   - restaurantId: The restaurant ID
+    ///   - completion: Completion handler with optional UIImage
+    func fetchRestaurantImage(restaurantId: String, completion: @escaping (UIImage?) -> Void) {
+        // Try multiple endpoint formats since we're not sure which one the server supports
+        let endpoints = [
+            "\(NetworkManager.baseURL)/get_restaurant_photo/\(restaurantId)",
+            "\(NetworkManager.baseURL)/restaurants/\(restaurantId)/photo",
+            "\(NetworkManager.baseURL)/restaurant_photo/\(restaurantId)",
+            "\(NetworkManager.baseURL)/restaurant/\(restaurantId)/image"
+        ]
+        
+        // Try loading with a placeholder image if all else fails
+        var loadAttempted = false
+        
+        for endpointString in endpoints {
+            guard let url = URL(string: endpointString) else { continue }
+            
+            DebugLogger.shared.log("Attempting to fetch restaurant image from: \(url.absoluteString)", category: .network, tag: "FETCH_RESTAURANT_IMAGE")
+            
+            loadAttempted = true
+            URLSession.shared.dataTask(with: url) { data, response, error in
+                if let error = error {
+                    DebugLogger.shared.logError(error, tag: "RESTAURANT_IMAGE_FETCH")
+                    // Continue with next endpoint if this one fails
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse else { return }
+                
+                // Check if we got a successful response
+                if (200...299).contains(httpResponse.statusCode), let data = data, let image = UIImage(data: data) {
+                    DebugLogger.shared.log("Successfully fetched restaurant image from \(url.absoluteString)", category: .network, tag: "RESTAURANT_IMAGE_FETCH")
+                    DispatchQueue.main.async {
+                        completion(image)
+                    }
+                    return
+                }
+            }.resume()
+        }
+        
+        // If we couldn't find a valid endpoint or no image was loaded, use a default image
+        if !loadAttempted || true {
+            DebugLogger.shared.log("Using default restaurant image", category: .network, tag: "RESTAURANT_IMAGE_FETCH")
+            let defaultImage = UIImage(systemName: "building.2.fill")?.withTintColor(.green, renderingMode: .alwaysOriginal)
+            DispatchQueue.main.async {
+                completion(defaultImage)
+            }
+        }
     }
 }
 

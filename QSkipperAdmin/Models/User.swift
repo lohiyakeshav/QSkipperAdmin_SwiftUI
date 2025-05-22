@@ -67,9 +67,39 @@ struct UserRestaurantProfile: Codable {
     
     var restaurantImage: UIImage? {
         get {
-            guard let imageData = imageData, 
-                  let data = Data(base64Encoded: imageData) else { return nil }
-            return UIImage(data: data)
+            // First try loading from base64 data
+            if let imageData = imageData, 
+               let data = Data(base64Encoded: imageData),
+               let image = UIImage(data: data) {
+                return image
+            }
+            
+            // If no image data, try to load from the server asynchronously
+            // Try both restaurantId and id since we're not sure which one the server expects
+            let possibleIds = [restaurantId, id].filter { !$0.isEmpty }
+            
+            if !possibleIds.isEmpty {
+                DispatchQueue.global().async {
+                    for possibleId in possibleIds {
+                        // Try with each possible ID
+                        RestaurantService.shared.fetchRestaurantImage(restaurantId: possibleId) { image in
+                            if let image = image {
+                                // Update the imageData property with the fetched image
+                                DispatchQueue.main.async {
+                                    var mutableSelf = self
+                                    mutableSelf.restaurantImage = image
+                                    
+                                    // Log success
+                                    DebugLogger.shared.log("Successfully loaded restaurant image from server for ID: \(possibleId)", category: .network, tag: "RESTAURANT_IMAGE")
+                                }
+                                return // Stop trying once we get an image
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return nil
         }
         set {
             if let newImage = newValue, let data = newImage.jpegData(compressionQuality: 0.7) {

@@ -112,10 +112,31 @@ class ModernOrdersViewModel: ObservableObject {
             }
         } catch {
             await MainActor.run {
+                self.orders = [] // Ensure we have an empty array for no orders
                 self.errorMessage = error.localizedDescription
-                self.showError = true
+                
+                // Don't show an error alert for "not found" errors since that's handled by the UI
+                if let apiError = error as? OrderApiError {
+                    switch apiError {
+                    case .orderNotFound:
+                        // Don't show an error for no orders found
+                        self.showError = false
+                        DebugLogger.shared.log("No orders found (handled gracefully)", category: .app)
+                    default:
+                        self.showError = true
+                    }
+                } else if error.localizedDescription.contains("not found") || 
+                         error.localizedDescription.contains("No orders") {
+                    // Also don't show errors with "not found" in the message
+                    self.showError = false
+                    DebugLogger.shared.log("No orders found message detected (handled gracefully)", category: .app)
+                } else {
+                    // Only show error alert for actual errors, not for "no orders" state
+                    self.showError = true
+                    DebugLogger.shared.log("Error loading orders: \(error.localizedDescription)", category: .error)
+                }
+                
                 self.isLoading = false
-                DebugLogger.shared.log("Error loading orders: \(error.localizedDescription)", category: .error)
             }
         }
     }

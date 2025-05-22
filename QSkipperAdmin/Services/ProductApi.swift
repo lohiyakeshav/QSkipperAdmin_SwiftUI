@@ -250,9 +250,9 @@ class ProductApi {
             return DataController.shared.restaurant.id
         }
         
-        // Fallback to hardcoded value
-        DebugLogger.shared.log("Using fallback hardcoded restaurant ID: 682cb15d2d6973ccf4ce9a21", category: .network, tag: "PRODUCT_API")
-        return "682cb15d2d6973ccf4ce9a21"
+        // Don't use hardcoded fallback
+        DebugLogger.shared.log("No restaurant ID available", category: .network, tag: "PRODUCT_API")
+        return ""
     }
     
     /// Get all products for a restaurant
@@ -261,6 +261,12 @@ class ProductApi {
     func getAllProducts(restaurantId: String = "") async throws -> [Product] {
         // If restaurantId is provided, use it; otherwise get the correct restaurant ID
         let targetRestaurantId = !restaurantId.isEmpty ? restaurantId : getCorrectRestaurantId()
+        
+        // Check if we have a valid restaurant ID, if not return empty array
+        if targetRestaurantId.isEmpty {
+            DebugLogger.shared.log("📱 No restaurant ID available, returning empty products array", category: .network)
+            return []
+        }
         
         DebugLogger.shared.log("📱 RESTAURANT DETAIL: Starting product load for restaurant ID: \(targetRestaurantId)", category: .network)
         DebugLogger.shared.log("⏱️ Time: \(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .medium))", category: .network)
@@ -345,6 +351,11 @@ class ProductApi {
         
         // Get the correct restaurant ID
         let correctRestaurantId = getCorrectRestaurantId()
+        
+        // Check if we have a valid restaurant ID
+        if correctRestaurantId.isEmpty {
+            throw NSError(domain: "ProductApi", code: 0, userInfo: [NSLocalizedDescriptionKey: "No restaurant ID available to create product"])
+        }
         
         // Create a product with the correct restaurant ID
         var productToCreate = product

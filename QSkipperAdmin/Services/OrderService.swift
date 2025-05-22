@@ -33,7 +33,26 @@ class OrderService: ObservableObject {
         isLoading = true
         error = nil
         
-        let url = URL(string: "\(Endpoints.restaurant)/\(restaurantId)")!
+        // Try to get the correct restaurant ID
+        var targetRestaurantId = restaurantId
+        
+        // If empty, try to get from UserDefaults
+        if targetRestaurantId.isEmpty, 
+           let storedRestaurantId = UserDefaults.standard.string(forKey: "restaurant_id"), 
+           !storedRestaurantId.isEmpty {
+            targetRestaurantId = storedRestaurantId
+            DebugLogger.shared.log("Using restaurant ID from UserDefaults: \(targetRestaurantId)", category: .network)
+        }
+        
+        // Ensure we have a restaurant ID
+        if targetRestaurantId.isEmpty {
+            self.error = "Restaurant ID not found"
+            self.isLoading = false
+            DebugLogger.shared.log("No restaurant ID found, cannot fetch orders", category: .network)
+            return
+        }
+        
+        let url = URL(string: "\(Endpoints.restaurant)/\(targetRestaurantId)")!
         
         URLSession.shared.dataTaskPublisher(for: url)
             .map(\.data)

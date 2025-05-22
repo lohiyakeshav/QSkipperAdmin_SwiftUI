@@ -267,8 +267,31 @@ class OrderApi {
     /// Fetch all orders for the restaurant
     /// - Returns: A list of orders
     func getAllOrders() async throws -> [APIOrder] {
-        // Use the restaurant ID for fetching orders
-        let restaurantId = DataController.shared.restaurant.id
+        // Try to get the restaurant ID from multiple sources to ensure we're using the correct one
+        var restaurantId = ""
+        
+        // First try to get from UserDefaults since that's most reliable for restaurant ID
+        if let storedRestaurantId = UserDefaults.standard.string(forKey: "restaurant_id"), !storedRestaurantId.isEmpty {
+            restaurantId = storedRestaurantId
+            DebugLogger.shared.log("Using restaurant ID from UserDefaults: \(restaurantId)", category: .network)
+        }
+        // Then try from DataController
+        else if !DataController.shared.restaurant.id.isEmpty {
+            restaurantId = DataController.shared.restaurant.id
+            DebugLogger.shared.log("Using restaurant ID from DataController: \(restaurantId)", category: .network)
+        }
+        // Finally try from auth service
+        else if let user = AuthService.shared.currentUser, !user.restaurantId.isEmpty {
+            restaurantId = user.restaurantId
+            DebugLogger.shared.log("Using restaurant ID from auth service: \(restaurantId)", category: .network)
+        }
+        
+        // Ensure we have a restaurant ID
+        if restaurantId.isEmpty {
+            DebugLogger.shared.log("No restaurant ID found, cannot fetch orders", category: .network)
+            throw NSError(domain: "OrderApi", code: 400, userInfo: [NSLocalizedDescriptionKey: "Restaurant ID not found"])
+        }
+        
         let orderUrl = baseUrl.appendingPathComponent("get-order/\(restaurantId)")
         
         var request = URLRequest(url: orderUrl)

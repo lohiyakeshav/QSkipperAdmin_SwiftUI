@@ -41,10 +41,14 @@ class AuthService: ObservableObject {
             if let token = getToken() {
                 DebugLogger.shared.log("Auth token also found for user \(userId)", category: .auth)
                 
+                // Get the correct restaurant ID from UserDefaults if available
+                let restaurantId = UserDefaults.standard.string(forKey: "restaurant_id") ?? userId
+                DebugLogger.shared.log("Found restaurant ID: \(restaurantId)", category: .auth)
+                
                 // Create minimal profile
                 self.currentUser = UserRestaurantProfile(
                     id: userId,
-                    restaurantId: userId,
+                    restaurantId: restaurantId,
                     restaurantName: "",
                     estimatedTime: 30,
                     cuisine: "",
@@ -583,6 +587,14 @@ class AuthService: ObservableObject {
                     let userId = id
                     let authToken = token
                     
+                    // Check if there are restaurant details in the response
+                    let restaurantId = json["restaurantid"] as? String ?? id
+                    
+                    // If we have a restaurantId different from the user ID, log it
+                    if restaurantId != id {
+                        DebugLogger.shared.log("📋 Found restaurant ID in response: \(restaurantId)", category: .auth)
+                    }
+                    
                     // Save the ID - all UI updates on main thread
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
@@ -592,6 +604,10 @@ class AuthService: ObservableObject {
                         
                         self.saveUserId(userId: userId)
                         self.isAuthenticated = true
+                        
+                        // Save restaurant ID separately - CRUCIAL for correct API calls
+                        UserDefaults.standard.set(restaurantId, forKey: "restaurant_id")
+                        UserDefaults.standard.set(!restaurantId.isEmpty, forKey: "is_restaurant_registered")
                         
                         // Save token if available
                         if let token = authToken {
@@ -604,13 +620,19 @@ class AuthService: ObservableObject {
                         if self.currentUser == nil {
                             self.currentUser = UserRestaurantProfile(
                                 id: userId,
-                                restaurantId: userId,
-                                restaurantName: "",
-                                estimatedTime: 30,
-                                cuisine: "",
+                                restaurantId: restaurantId,
+                                restaurantName: json["restaurantName"] as? String ?? "",
+                                estimatedTime: json["resturantEstimateTime"] as? Int ?? 30,
+                                cuisine: json["resturantCusine"] as? String ?? "",
                                 restaurantImage: nil
                             )
-                            DebugLogger.shared.log("👤 Created basic user profile with ID: \(userId)", category: .auth)
+                            DebugLogger.shared.log("👤 Created basic user profile with ID: \(userId) and restaurant ID: \(restaurantId)", category: .auth)
+                        }
+                        
+                        // Save complete restaurant info from login response
+                        if let encodedData = try? JSONSerialization.data(withJSONObject: json) {
+                            UserDefaults.standard.set(encodedData, forKey: "restaurant_raw_data")
+                            DebugLogger.shared.log("Complete restaurant raw data saved to UserDefaults", category: .auth)
                         }
                     }
                     
@@ -622,10 +644,10 @@ class AuthService: ObservableObject {
                         user: nil,
                         id: id,
                         username: nil,
-                        restaurantId: id,
-                        restaurantName: nil,
-                        estimatedTime: nil,
-                        cuisine: nil
+                        restaurantId: restaurantId,
+                        restaurantName: json["restaurantName"] as? String,
+                        estimatedTime: json["resturantEstimateTime"] as? Int,
+                        cuisine: json["resturantCusine"] as? String
                     )
                     
                     return userResponse

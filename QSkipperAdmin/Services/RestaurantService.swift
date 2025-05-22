@@ -594,12 +594,28 @@ class RestaurantService: ObservableObject {
     ///   - restaurantId: The restaurant ID
     ///   - completion: Completion handler with optional UIImage
     func fetchRestaurantImage(restaurantId: String, completion: @escaping (UIImage?) -> Void) {
-        // Try multiple endpoint formats since we're not sure which one the server supports
+        // First, check if this is the user ID instead of the restaurantId
+        // Try to get the actual restaurant ID from the DataController or UserDefaults
+        var targetRestaurantId = restaurantId
+        
+        // Try to get from DataController first
+        if !DataController.shared.restaurant.id.isEmpty && DataController.shared.restaurant.id != restaurantId {
+            targetRestaurantId = DataController.shared.restaurant.id
+            DebugLogger.shared.log("Using restaurant ID from DataController instead: \(targetRestaurantId)", category: .network, tag: "FETCH_RESTAURANT_IMAGE")
+        }
+        
+        // Try to get from UserDefaults if still using the original ID
+        if targetRestaurantId == restaurantId, let storedRestaurantId = UserDefaults.standard.string(forKey: "restaurant_id"), !storedRestaurantId.isEmpty {
+            targetRestaurantId = storedRestaurantId
+            DebugLogger.shared.log("Using restaurant ID from UserDefaults instead: \(targetRestaurantId)", category: .network, tag: "FETCH_RESTAURANT_IMAGE")
+        }
+        
+        // Try multiple endpoint formats with the correct restaurant ID
         let endpoints = [
-            "\(NetworkManager.baseURL)/get_restaurant_photo/\(restaurantId)",
-            "\(NetworkManager.baseURL)/restaurants/\(restaurantId)/photo",
-            "\(NetworkManager.baseURL)/restaurant_photo/\(restaurantId)",
-            "\(NetworkManager.baseURL)/restaurant/\(restaurantId)/image"
+            "\(NetworkManager.baseURL)/get_restaurant_photo/\(targetRestaurantId)",
+            "\(NetworkManager.baseURL)/restaurants/\(targetRestaurantId)/photo",
+            "\(NetworkManager.baseURL)/restaurant_photo/\(targetRestaurantId)",
+            "\(NetworkManager.baseURL)/restaurant/\(targetRestaurantId)/image"
         ]
         
         // Try loading with a placeholder image if all else fails

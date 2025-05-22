@@ -236,21 +236,25 @@ class ProductApi {
     
     /// Helper function to get the correct restaurant ID
     private func getCorrectRestaurantId() -> String {
-        // For now, we're hardcoding the correct restaurant ID
-        // In a real app, you would want to get this from proper authentication
-        // Check if we have a restaurant ID from current user
+        // First try to get from UserDefaults which should have the most accurate restaurant ID
+        if let storedRestaurantId = UserDefaults.standard.string(forKey: "restaurant_id"), !storedRestaurantId.isEmpty {
+            DebugLogger.shared.log("Using restaurant ID from UserDefaults: \(storedRestaurantId)", category: .network, tag: "PRODUCT_API")
+            return storedRestaurantId
+        }
+        
+        // Next, check current user
         if let user = AuthService.shared.currentUser, !user.restaurantId.isEmpty {
             DebugLogger.shared.log("Using restaurant ID from current user: \(user.restaurantId)", category: .network, tag: "PRODUCT_API")
             return user.restaurantId
         }
         
-        // Get from DataController if available
+        // Finally, get from DataController if available
         if !DataController.shared.restaurant.id.isEmpty {
             DebugLogger.shared.log("Using restaurant ID from DataController: \(DataController.shared.restaurant.id)", category: .network, tag: "PRODUCT_API")
             return DataController.shared.restaurant.id
         }
         
-        // Don't use hardcoded fallback
+        // No restaurant ID available
         DebugLogger.shared.log("No restaurant ID available", category: .network, tag: "PRODUCT_API")
         return ""
     }

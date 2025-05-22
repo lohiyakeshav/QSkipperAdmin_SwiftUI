@@ -75,10 +75,11 @@ struct UserRestaurantProfile: Codable {
             }
             
             // If no image data, try to load from the server asynchronously
-            // Try both restaurantId and id since we're not sure which one the server expects
-            let possibleIds = [restaurantId, id].filter { !$0.isEmpty }
+            // Prioritize restaurantId since that's the correct one
+            let possibleIds = [restaurantId].filter { !$0.isEmpty }
             
             if !possibleIds.isEmpty {
+                DebugLogger.shared.log("Attempting to load restaurant image with ID: \(possibleIds.first!)", category: .network, tag: "RESTAURANT_IMAGE")
                 DispatchQueue.global().async {
                     for possibleId in possibleIds {
                         // Try with each possible ID
@@ -225,11 +226,24 @@ struct UserResponse: Codable {
     // Simple initializer for direct restaurant profile response
     static func createFromRestaurantResponse(json: [String: Any]) -> UserResponse {
         let id = json["id"] as? String ?? ""
-        let restaurantId = json["restaurantid"] as? String ?? id
+        let restaurantId = json["restaurantid"] as? String ?? ""
         let restaurantName = json["restaurantName"] as? String ?? ""
         let estimatedTime = json["resturantEstimateTime"] as? Int ?? 0
         let cuisine = json["resturantCusine"] as? String ?? ""
         let token = json["token"] as? String
+        
+        // Log the extracted data for debugging
+        DebugLogger.shared.log("Creating user response from restaurant data:", category: .auth)
+        DebugLogger.shared.log("  - ID: \(id)", category: .auth)
+        DebugLogger.shared.log("  - Restaurant ID: \(restaurantId)", category: .auth)
+        DebugLogger.shared.log("  - Restaurant Name: \(restaurantName)", category: .auth)
+        
+        // Make sure all restaurant data is saved to UserDefaults for later access
+        if !restaurantId.isEmpty {
+            UserDefaults.standard.set(restaurantId, forKey: "restaurant_id")
+            UserDefaults.standard.set(true, forKey: "is_restaurant_registered")
+            DebugLogger.shared.log("Saved restaurant ID to UserDefaults: \(restaurantId)", category: .auth)
+        }
         
         return UserResponse(
             success: true,

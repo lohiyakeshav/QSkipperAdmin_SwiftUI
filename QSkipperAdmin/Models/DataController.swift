@@ -50,9 +50,12 @@ class DataController: ObservableObject {
             DebugLogger.shared.log("Set current user from user object: \(user.id)", category: .auth)
         } else {
             // Create a user from the individual fields
-            let userId = userResponse.id ?? userResponse.restaurantId ?? ""
+            let userId = userResponse.id ?? ""
             let name = userResponse.username ?? ""
             let email = ""  // Email might not be returned, but we'd need to save it separately
+            
+            // Get the restaurant ID from the response or fall back to user ID
+            let restaurantId = userResponse.restaurantId ?? userId
             
             self.currentUser = User(
                 id: userId,
@@ -61,14 +64,14 @@ class DataController: ObservableObject {
                 restaurantName: userResponse.restaurantName,
                 restaurantAddress: nil,
                 phone: nil,
-                restaurantId: userResponse.restaurantId
+                restaurantId: restaurantId
             )
             
-            DebugLogger.shared.log("Set current user from response fields: \(userId)", category: .auth)
+            DebugLogger.shared.log("Set current user from response fields: \(userId) with restaurant ID: \(restaurantId)", category: .auth)
         }
         
         // Also set restaurant data if available
-        if let restaurantId = userResponse.restaurantId ?? userResponse.id ?? userResponse.user?.restaurantId {
+        if let restaurantId = userResponse.restaurantId {
             self.restaurant = RestaurantInfo(
                 id: restaurantId,
                 name: userResponse.restaurantName ?? "",
@@ -78,7 +81,22 @@ class DataController: ObservableObject {
                 categories: []
             )
             
-            DebugLogger.shared.log("Set restaurant data: \(restaurantId)", category: .auth)
+            // Save the restaurant ID separately as well for easy access
+            UserDefaults.standard.set(restaurantId, forKey: "restaurant_id")
+            
+            DebugLogger.shared.log("Set restaurant data with ID: \(restaurantId)", category: .auth)
+        } else if let userId = userResponse.id {
+            // Fallback to user ID if we don't have a specific restaurant ID
+            self.restaurant = RestaurantInfo(
+                id: userId,
+                name: userResponse.restaurantName ?? "",
+                email: self.currentUser.email,
+                address: "",
+                phone: "",
+                categories: []
+            )
+            
+            DebugLogger.shared.log("Set restaurant data using user ID: \(userId) (fallback)", category: .auth)
         }
         
         // Save data
@@ -197,29 +215,44 @@ class DataController: ObservableObject {
     }
     
     private func loadSavedData() {
+        // Try to get the restaurant ID directly from UserDefaults first
+        let directRestaurantId = UserDefaults.standard.string(forKey: "restaurant_id")
+        if let directRestaurantId = directRestaurantId, !directRestaurantId.isEmpty {
+            DebugLogger.shared.log("Found direct restaurant ID in UserDefaults: \(directRestaurantId)", category: .auth)
+            self.restaurant.id = directRestaurantId
+        }
+        
         // Load user data
         if let userData = UserDefaults.standard.data(forKey: "userData"),
            let decodedUser = try? JSONDecoder().decode(User.self, from: userData) {
             self.currentUser = decodedUser
             DebugLogger.shared.log("Loaded user data from UserDefaults: \(decodedUser.id)", category: .auth)
+            
+            // If we have a restaurant ID in the user data and no direct ID, use it
+            if directRestaurantId == nil, let restaurantId = decodedUser.restaurantId, !restaurantId.isEmpty {
+                self.restaurant.id = restaurantId
+                DebugLogger.shared.log("Using restaurant ID from user data: \(restaurantId)", category: .auth)
+            }
         }
         
         // Load restaurant data
         if let restaurantData = UserDefaults.standard.data(forKey: "restaurantData"),
            let decodedRestaurant = try? JSONDecoder().decode(RestaurantInfo.self, from: restaurantData) {
-            self.restaurant = decodedRestaurant
+            
+            // Create a mutable copy to work with
+            var updatedRestaurant = decodedRestaurant
             DebugLogger.shared.log("Loaded restaurant data from UserDefaults: \(decodedRestaurant.id)", category: .auth)
             
-            // Check if we need to update with the specific restaurant ID
-            if let specificRestaurantId = UserDefaults.standard.string(forKey: "restaurant_id"), 
-               !specificRestaurantId.isEmpty,
-               specificRestaurantId != decodedRestaurant.id {
-                
-                self.restaurant.id = specificRestaurantId
-                DebugLogger.shared.log("Updated restaurant ID to: \(specificRestaurantId)", category: .auth)
+            // Always prioritize direct restaurant ID if we have it
+            if let directId = directRestaurantId, !directId.isEmpty {
+                updatedRestaurant.id = directId
+                DebugLogger.shared.log("Overriding restaurant ID with direct ID: \(directId)", category: .auth)
             }
             
-            // Try to load raw restaurant data if available
+            // Apply our updated restaurant data
+            self.restaurant = updatedRestaurant
+            
+            // Check if we have raw restaurant data which might contain more details
             if let rawRestaurantData = UserDefaults.standard.data(forKey: "restaurant_raw_data"),
                let restaurantInfo = try? JSONSerialization.jsonObject(with: rawRestaurantData) as? [String: Any] {
                 
@@ -233,20 +266,15 @@ class DataController: ObservableObject {
                     DebugLogger.shared.log("Updated restaurant name from raw data: \(restaurantName)", category: .auth)
                 }
             }
-        } else {
-            // Try to load restaurant ID directly if available
-            if let restaurantId = UserDefaults.standard.string(forKey: "restaurant_id"), !restaurantId.isEmpty {
-                self.restaurant.id = restaurantId
-                DebugLogger.shared.log("Set restaurant ID from UserDefaults: \(restaurantId)", category: .auth)
+        } else if directRestaurantId != nil {
+            // If we don't have restaurant data but we do have a direct restaurant ID,
+            // try to load additional restaurant details from raw data
+            if let restaurantRawData = UserDefaults.standard.data(forKey: "restaurant_data"),
+               let restaurantDict = try? JSONSerialization.jsonObject(with: restaurantRawData) as? [String: Any],
+               let name = restaurantDict["name"] as? String {
                 
-                // Try to load additional restaurant details
-                if let restaurantRawData = UserDefaults.standard.data(forKey: "restaurant_data"),
-                   let restaurantDict = try? JSONSerialization.jsonObject(with: restaurantRawData) as? [String: Any],
-                   let name = restaurantDict["name"] as? String {
-                    
-                    self.restaurant.name = name
-                    DebugLogger.shared.log("Set restaurant name from raw data: \(name)", category: .auth)
-                }
+                self.restaurant.name = name
+                DebugLogger.shared.log("Set restaurant name from raw data: \(name)", category: .auth)
             }
         }
     }

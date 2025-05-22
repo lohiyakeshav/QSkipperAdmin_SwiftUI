@@ -38,11 +38,18 @@ struct DashboardView: View {
         }
         .accentColor(Color(AppColors.primaryGreen))
         .onAppear {
-            // Load initial data if we have a user
-            if let currentUser = authService.currentUser,
-               !currentUser.restaurantId.isEmpty {
+            // First try to get restaurant ID from UserDefaults
+            if let storedRestaurantId = UserDefaults.standard.string(forKey: "restaurant_id"), !storedRestaurantId.isEmpty {
+                DebugLogger.shared.log("Found restaurant ID in UserDefaults: \(storedRestaurantId)", category: .app)
+                loadData(restaurantId: storedRestaurantId)
+            }
+            // Then try from current user if available
+            else if let currentUser = authService.currentUser,
+                   !currentUser.restaurantId.isEmpty {
                 loadData(restaurantId: currentUser.restaurantId)
-            } else {
+            } 
+            // Finally check if we need to show profile setup
+            else {
                 showProfileModal = true
             }
         }
@@ -53,20 +60,29 @@ struct DashboardView: View {
     }
     
     private func loadData(restaurantId: String) {
+        // Try to get the restaurant ID from UserDefaults first
+        var targetRestaurantId = restaurantId
+        
+        if let storedRestaurantId = UserDefaults.standard.string(forKey: "restaurant_id"), !storedRestaurantId.isEmpty {
+            targetRestaurantId = storedRestaurantId
+            DebugLogger.shared.log("Using restaurant ID from UserDefaults: \(targetRestaurantId)", category: .app)
+        }
+        
         // Load orders
-        orderService.fetchRestaurantOrders(restaurantId: restaurantId)
+        orderService.fetchRestaurantOrders(restaurantId: targetRestaurantId)
         
         // Load products directly using ProductApi
         isLoadingProducts = true
         Task {
             do {
-                let fetchedProducts = try await ProductApi.shared.getAllProducts()
+                let fetchedProducts = try await ProductApi.shared.getAllProducts(restaurantId: targetRestaurantId)
                 DispatchQueue.main.async {
                     self.products = fetchedProducts
                     self.isLoadingProducts = false
                 }
             } catch {
                 print("Error loading products: \(error.localizedDescription)")
+                DebugLogger.shared.log("Error loading products: \(error.localizedDescription)", category: .error)
                 DispatchQueue.main.async {
                     self.isLoadingProducts = false
                 }

@@ -40,8 +40,7 @@ class NetworkManager {
     
     // Changed to static and public so it can be accessed from other classes
     #if DEBUG
-//    static let baseURL = "https://qskipper-server-2ul5.onrender.com"
-    static let baseURL = "http://localhost:3000"
+    static let baseURL = "https://qskipper-server-2ul5.onrender.com"
     #else
     static let baseURL = "https://qskipper-server-2ul5.onrender.com"
     #endif
